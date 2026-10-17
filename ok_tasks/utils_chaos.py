@@ -722,7 +722,11 @@ def handle_data_collected(task: TriggerTask):
             return False
 
         for feature_name in ["deletecards", "deletecards2", "deletecards3"]:
-            features = task.find_feature(feature_name=feature_name) or []
+            features = task.find_feature(
+                feature_name=feature_name,
+                horizontal_variance=0.005,
+                vertical_variance=0.005,
+            ) or []
             for feature in features:
                 feature_center_x = (feature.x + feature.width / 2) / task.width
                 feature_center_y = (feature.y + feature.height / 2) / task.height
