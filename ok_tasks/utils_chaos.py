@@ -2,7 +2,7 @@ from ok import TriggerTask
 
 from utils import (
     _move_and_click, _simplify_texts, _get_config_value, _get_card_list, _get_route_priority, _get_game_text, _get_region_text, _get_current_hp_percent, _finish_only_first_layer,
-    find_box_at_point, find_text, recognize_cards,
+    find_box_at_point, find_text, recognize_cards, find_target_card,
     _card_has_type_below, select_card,
     log_credit, log_node_status, handle_battle_crash, handle_close_page, handle_refine_equipment_credit,
     handle_center_confirm, handle_settlement, handle_skip,
@@ -30,6 +30,82 @@ import random
 
 
 # ------------------------- 卡厄思模式独有页面处理函数 -------------------------
+
+
+def handle_memory_card_select(task: TriggerTask):
+    """记忆卡牌选择页面：优先目标卡牌，其次指定记忆，否则刷新可搜索的卡牌。"""
+    title = _get_region_text(task, (0.341, 0.011, 0.670, 0.171))
+    if "选择铭刻的记忆" not in title:
+        return False
+
+    task.log_info("检测到记忆卡牌选择页面")
+    cards = recognize_cards(
+        task, region=(0.065, 0.176, 0.931, 0.787), page="记忆卡牌选择页面"
+    )
+    target_boxes, target_click_positions = find_target_card(task)
+    if target_boxes:
+        task.log_info("记忆卡牌选择页面：检测到target卡牌，优先选择")
+        _move_and_click(task, *target_click_positions[0])
+        task.sleep(1)
+        return True
+
+    specified_memory = _get_config_value(task, "指定记忆卡牌", "")
+    if specified_memory:
+        for card in cards:
+            if is_subsequence(specified_memory, card["name"] + "：:" + card["description"]):
+                task.log_info(f"记忆卡牌选择页面：命中指定记忆卡牌「{card['name']}」")
+                _move_and_click(task, card["x"], card["y"])
+                task.sleep(1)
+                return True
+
+    search_boxes = []
+    count_boxes = []
+    for box in task.all_texts:
+        x = (box.x + box.width / 2) / task.width
+        y = (box.y + box.height / 2) / task.height
+        if not (0.109 <= x <= 0.880 and 0.779 <= y <= 0.874):
+            continue
+        if "重新搜索" in box.name:
+            search_boxes.append(box)
+        match = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", box.name)
+        if match:
+            count_boxes.append((box, int(match.group(1))))
+
+    refreshed = False
+    for count_box, remaining in sorted(count_boxes, key=lambda item: item[0].x)[:3]:
+        count_x = count_box.x + count_box.width / 2
+        count_y = count_box.y + count_box.height / 2
+        candidates = [
+            box for box in search_boxes
+            if box.x + box.width / 2 < count_x
+            and abs(box.y + box.height / 2 - count_y) <= 0.04 * task.height
+        ]
+        if not candidates:
+            continue
+        search_box = min(
+            candidates,
+            key=lambda box: (box.x + box.width / 2 - count_x) ** 2
+            + (box.y + box.height / 2 - count_y) ** 2,
+        )
+        search_boxes.remove(search_box)
+        if remaining == 0:
+            continue
+        task.log_info(f"记忆卡牌选择页面：剩余搜索次数={remaining}，点击重新搜索")
+        _move_and_click(
+            task,
+            (search_box.x + search_box.width / 2) / task.width,
+            (search_box.y + search_box.height / 2) / task.height,
+        )
+        task.sleep(1)
+        refreshed = True
+    if not refreshed:
+        task.log_info("记忆卡牌选择页面：未命中目标，且未找到可用的重新搜索按钮")
+        if not specified_memory and cards:
+            card = random.choice(cards)
+            task.log_info(f"指定记忆卡牌为空且无法继续刷新，随机选择「{card['name']}」")
+            _move_and_click(task, card["x"], card["y"])
+            task.sleep(1)
+    return True
 
 
 def _match_storage_data_value(task: TriggerTask, text: str):
@@ -1056,6 +1132,7 @@ PAGE_HANDLERS = [
     handle_destiny_choice,
     handle_main_member_flash,
     handle_card_reward,
+    handle_memory_card_select,
     handle_select_card,
     handle_copy_member,
     handle_convert_card,

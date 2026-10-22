@@ -2312,9 +2312,9 @@ def _member_equipment_qualities(task: TriggerTask, level_box):
     level_center_x = (level_box.x + level_box.width / 2) / task.width
     level_center_y = (level_box.y + level_box.height / 2) / task.height
     relative_offsets = (
-        (0.130, -0.0655),
-        (0.201, -0.0665),
-        (0.270, -0.0655),
+        (0.130, -0.044),
+        (0.201, -0.044),
+        (0.270, -0.044),
     )
     qualities = []
     for slot, (offset_x, offset_y) in enumerate(relative_offsets):
@@ -3283,16 +3283,21 @@ def handle_event_task(task: TriggerTask):
     if reroll_empty_deck is True and is_initial_node:
         return handle_initial_node_task("移除2张", "刷空档")
 
-    # 检查任务区域中是否有 treasure 特征
-    treasure_box = task.box_of_screen(0.477, 0.336, 0.841, 0.540)
-    treasure_features = task.find_feature(
-        feature_name="treasure",
+    # 检查任务区域中是否有 treasure、memoryshards 或 data_of_light 特征
+    treasure_box = task.box_of_screen(0.285, 0.297, 0.944, 0.721)
+    reward_features = task.find_feature(
+        feature_name=["treasure", "memoryshards", "data_of_light"],
         box=treasure_box,
         threshold=0.7,
     )
-    if treasure_features:
-        task.log_info("检测到事件任务区域中有treasure特征，优先点击")
-        task.click_box(treasure_features[0])
+    if reward_features:
+        task.log_info(f"检测到事件任务区域中有{reward_features[0].name}特征，优先点击")
+        reward_feature = reward_features[0]
+        _move_and_click(
+            task,
+            (reward_feature.x + reward_feature.width / 2) / task.width,
+            (reward_feature.y + reward_feature.height / 2) / task.height,
+        )
         task.sleep(2)
         return True
 
@@ -3650,6 +3655,19 @@ def _wait_for_rest_confirm(task: TriggerTask):
 
 def handle_rest(task: TriggerTask):
     """休息界面: 根据血量、信用点和冥想状态选择休息或冥想。"""
+    special_flash = task.find_one(
+        feature_name=["special_flash_luosi", "special_flash_luosi2"],
+        box=task.box_of_screen(0.219, 0.208, 0.786, 0.814),
+    )
+    if special_flash:
+        _move_and_click(
+            task,
+            (special_flash.x + special_flash.width / 2) / task.width,
+            (special_flash.y + special_flash.height / 2) / task.height,
+        )
+        task.sleep(1)
+        return True
+
     rest_feature = _find_rest_feature(task)
     free_text = _get_region_text(task, (0.154, 0.602, 0.359, 0.847))
     flash_or_rest = (
@@ -3833,6 +3851,7 @@ def handle_shop(task: TriggerTask):
 
         card_priority = _get_card_reward_priority(task)
         equipment_priorities = [_equipment_priority(task, slot) for slot in range(3)]
+        unaffordable_items = []
         for index, credit_icon in enumerate(credit_icons):
             icon_x = (credit_icon.x + credit_icon.width / 2) / task.width
             icon_y = (credit_icon.y + credit_icon.height / 2) / task.height
@@ -3847,7 +3866,7 @@ def handle_shop(task: TriggerTask):
             is_card = index in card_icon_indexes
             item_type = "卡牌" if is_card else "装备"
             task.log_info(f"德朗商店第{index + 1}个商品: 类型={item_type}，名称=「{item_name}」，价格={price}")
-            if not item_name or price is None or price >= current_credit:
+            if not item_name or price is None:
                 continue
 
             if is_card:
@@ -3875,6 +3894,16 @@ def handle_shop(task: TriggerTask):
                 None,
                 )
             if not matched_name:
+                task.log_info(f"德朗商店: {item_type}「{item_name}」未命中配置，跳过")
+                continue
+            if price >= current_credit:
+                unaffordable_items.append(item_name)
+                reason = "余额不足" if price > current_credit else "余额等于价格，当前购买规则要求余额大于价格"
+                task.log_info(
+                    f"德朗商店: {item_type}「{item_name}」命中配置「{matched_name}」，"
+                    f"价格={price}，当前信用点={current_credit}，"
+                    f"{reason}，跳过购买"
+                )
                 continue
 
             task.log_info(
@@ -3893,7 +3922,13 @@ def handle_shop(task: TriggerTask):
         None,
         )
         if free_box:
-            task.log_info("德朗商店没有符合要求的商品，点击「免费」刷新")
+            if unaffordable_items:
+                task.log_info(
+                    f"德朗商店找到配置商品{unaffordable_items}，但余额未满足购买条件，"
+                    "点击「免费」刷新"
+                )
+            else:
+                task.log_info("德朗商店没有符合要求的商品，点击「免费」刷新")
             task.click_box(free_box)
             task.sleep(1)
             return True

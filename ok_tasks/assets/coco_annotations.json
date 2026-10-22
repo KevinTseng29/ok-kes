@@ -287,6 +287,30 @@
             "file_name": "images/0.png",
             "width": 1920,
             "height": 1080
+        },
+        {
+            "id": 185,
+            "file_name": "images/0.png",
+            "width": 1920,
+            "height": 1080
+        },
+        {
+            "id": 188,
+            "file_name": "images/2.png",
+            "width": 1920,
+            "height": 1080
+        },
+        {
+            "id": 191,
+            "file_name": "images/1.png",
+            "width": 1920,
+            "height": 1080
+        },
+        {
+            "id": 197,
+            "file_name": "images/0.png",
+            "width": 1920,
+            "height": 1080
         }
     ],
     "annotations": [
@@ -1316,6 +1340,58 @@
             ],
             "area": 5427,
             "iscrowd": 0
+        },
+        {
+            "id": 80,
+            "image_id": 188,
+            "category_id": 80,
+            "bbox": [
+                1152,
+                420,
+                75,
+                69
+            ],
+            "area": 5175,
+            "iscrowd": 0
+        },
+        {
+            "id": 81,
+            "image_id": 191,
+            "category_id": 81,
+            "bbox": [
+                1132,
+                311,
+                63,
+                73
+            ],
+            "area": 4599,
+            "iscrowd": 0
+        },
+        {
+            "id": 82,
+            "image_id": 197,
+            "category_id": 82,
+            "bbox": [
+                522,
+                400,
+                69,
+                88
+            ],
+            "area": 6072,
+            "iscrowd": 0
+        },
+        {
+            "id": 83,
+            "image_id": 185,
+            "category_id": 83,
+            "bbox": [
+                1039,
+                378,
+                74,
+                71
+            ],
+            "area": 5254,
+            "iscrowd": 0
         }
     ],
     "categories": [
@@ -1712,6 +1788,26 @@
         {
             "id": 79,
             "name": "meditate",
+            "supercategory": ""
+        },
+        {
+            "id": 80,
+            "name": "memoryshards",
+            "supercategory": ""
+        },
+        {
+            "id": 81,
+            "name": "special_flash_luosi",
+            "supercategory": ""
+        },
+        {
+            "id": 82,
+            "name": "special_flash_luosi2",
+            "supercategory": ""
+        },
+        {
+            "id": 83,
+            "name": "data_of_light",
             "supercategory": ""
         }
     ]
