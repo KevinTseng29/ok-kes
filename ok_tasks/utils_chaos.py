@@ -866,6 +866,82 @@ def handle_go_to_chaos_core(task: TriggerTask):
     return False
 
 
+def handle_go_to_memory_end(task: TriggerTask):
+    """卡厄思结算页面右下角「前往记忆之末」按钮: 检测到后点击进入记忆之末。"""
+    region = (0.740, 0.850, 0.995, 0.980)
+    box = next(
+        (
+            text_box
+            for text_box in task.all_texts
+            if region[0] <= (text_box.x + text_box.width / 2) / task.width <= region[2]
+            and region[1] <= (text_box.y + text_box.height / 2) / task.height <= region[3]
+            and "记忆之末" in text_box.name
+        ),
+        None,
+    )
+    if box:
+        task.log_info("检测到前往记忆之末按钮，点击进入")
+        task.click_box(box)
+        task.sleep(1)
+        return True
+
+    # OCR 可能把按钮文字拆成多个框，退回整块区域文本匹配
+    region_text = _get_region_text(task, region).replace(" ", "")
+    if "记忆之末" not in region_text:
+        return False
+
+    task.log_info("检测到前往记忆之末按钮（区域文本匹配），点击进入")
+    _move_and_click(task, 0.881, 0.908)
+    task.sleep(1)
+    return True
+
+
+def _precision_button_active(task: TriggerTask, box):
+    """精密加工记忆按钮是否可用: 文本左侧胶囊背景为橙色时可用，材料耗尽后会变灰。"""
+    x1 = max(int(box.x) - 30, 0)
+    x2 = max(int(box.x) - 5, x1 + 1)
+    center_y = int(box.y + box.height / 2)
+    patch = task.frame[max(center_y - 6, 0):center_y + 6, x1:x2, :3]
+    if patch.size == 0:
+        return False
+    blue, _, red = patch.mean(axis=(0, 1))
+    return (red - blue) > 30
+
+
+def handle_precision_memory_process(task: TriggerTask):
+    """记忆之末「精密加工记忆」按钮: 可用时优先点击，变灰（材料耗尽）后交给离开按钮处理。"""
+    title_text = _get_region_text(task, (0.400, 0.080, 0.600, 0.170)).replace(" ", "")
+    if "精密加工记忆" not in title_text:
+        return False
+
+    # 记录已进入过该页面，避免事件对话反复选择「精密加工记忆」造成死循环
+    status = getattr(task, "node_status", None)
+    if status is not None:
+        status["precision_memory_visited"] = True
+
+    region = (0.700, 0.730, 0.995, 0.870)
+    box = next(
+        (
+            text_box
+            for text_box in task.all_texts
+            if region[0] <= (text_box.x + text_box.width / 2) / task.width <= region[2]
+            and region[1] <= (text_box.y + text_box.height / 2) / task.height <= region[3]
+            and "精密加工记忆" in text_box.name
+        ),
+        None,
+    )
+    if not box:
+        return False
+    if not _precision_button_active(task, box):
+        task.log_info("精密加工记忆按钮已变灰（材料耗尽），跳过点击")
+        return False
+
+    task.log_info("检测到精密加工记忆按钮，点击精密加工")
+    task.click_box(box)
+    task.sleep(1)
+    return True
+
+
 def handle_chaos_reward_claim(task: TriggerTask):
     """卡厄思模式奖励领取页面: 如果0.568,0.711处文本包含"获得"，则为奖励领取页面。
     识别0.959,0.281处"\\d/\\d"作为当前/最大战利品验证卡，
@@ -959,6 +1035,7 @@ PAGE_HANDLERS = [
     handle_reflash, #重新闪光按钮
     handle_grant_flash, #赋予闪光按钮
     handle_copy, #复制按钮
+    handle_precision_memory_process, #记忆之末精密加工记忆，优先于离开按钮
     handle_leave, #离开按钮
     handle_mental_breakdown, #精神崩溃，优先级高于下一步按钮
     handle_data_collected, #存储数据收集完成，优先级高于下一步按钮
@@ -986,6 +1063,7 @@ PAGE_HANDLERS = [
     handle_negotiation,
     handle_chaos_reward_settlement, #卡厄思奖励结算页面，优先级高于继续按钮
     handle_chaos_reward_claim, #卡厄思模式奖励领取页面
+    handle_go_to_memory_end, #卡厄思结算页面右下角「前往记忆之末」按钮
     handle_continue,
     handle_season_chaos_initial_page, #赛季卡厄思初始页面，优先于进入按钮
     handle_zero_system_initial_page, #零式系统初始页面，优先于进入按钮
