@@ -75,6 +75,7 @@ class ChaosMode(TriggerTask):
                             "is_escaped": False, "save_target_member": False,
                             "target_mask_card_position": -1,
                             "get_specific_flash": False,
+                            "precision_memory_visited": False,
                             "removed_card_count": 0,
                             "neutral_card_count": 0}
         self.member_status = {

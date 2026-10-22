@@ -2831,8 +2831,22 @@ def handle_select_card(task: TriggerTask):
     ):
         _scroll_to_target_member_for_card_removal(task)
 
-    select_card(task, _get_card_list(task, config_key), count=count, action=action)
-    return True
+    result = select_card(task, _get_card_list(task, config_key), count=count, action=action)
+    if not result and action in ("闪光", "灵光"):
+        skip_box = next(
+            (
+                b for b in task.all_texts
+                if 0.620 <= (b.x + b.width / 2) / task.width <= 0.990
+                and 0.883 <= (b.y + b.height / 2) / task.height <= 0.983
+                and "跳过" in b.name
+            ),
+            None,
+        )
+        if skip_box:
+            task.log_info(f"卡牌{action}选择无可用卡牌，点击「跳过」")
+            task.click_box(skip_box)
+            return True
+    return result
 
 
 def handle_copy_card_choice(task: TriggerTask):
@@ -3197,6 +3211,20 @@ def handle_event_task(task: TriggerTask):
         description_y = (top + bottom) / 2
         _move_and_click(task, description_x, description_y)
 
+    # 已经进过「精密加工记忆」页面后，优先选择「就此离开」结束事件，避免反复进入造成死循环
+    event_status = getattr(task, "node_status", {})
+    if event_status.get("precision_memory_visited"):
+        leave_task = next(
+            (task_info for task_info in tasks_info if "就此离开" in task_info["description"]),
+            None,
+        )
+        if leave_task is not None:
+            task.log_info("已进入过精密加工记忆，选择「就此离开」结束事件")
+            click_event_option(leave_task)
+            event_status["precision_memory_visited"] = False
+            task.sleep(1)
+            return True
+
     def handle_initial_node_task(description_keyword, purpose):
         """初始节点按描述选择任务；未找到目标描述时点击ESC重新开始。"""
         matched_task = next(
@@ -3350,6 +3378,7 @@ def handle_route_selection(task: TriggerTask):
         if hasattr(task, 'node_status') and task.node_status.get('enter_new_node', False):
             task.node_status['enter_new_node'] = False
             task.node_status['node_count'] += 1
+            task.node_status['precision_memory_visited'] = False
             task.log_info(f"离开路线选择页面，当前节点计数: {task.node_status['node_count']}")
         return False
 
