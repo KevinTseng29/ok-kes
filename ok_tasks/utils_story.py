@@ -2,10 +2,12 @@ from ok import TriggerTask
 
 from utils import (
     _move_and_click,
+    handle_center_confirm,
     handle_confirm,
     handle_enter,
     handle_close_page,
     handle_next_step,
+    handle_event_task,
     find_box_at_point,
 )
 from utils_chaos import handle_battle_auto_check
@@ -13,24 +15,53 @@ from utils_chaos import handle_battle_auto_check
 
 # ------------------------- 页面处理函数 -------------------------
 
+def handle_close_dialog(task: TriggerTask):
+    """关闭剧情对话弹窗。"""
+    close_dialog = task.find_one(
+        feature_name="close_dialog",
+        box=task.box_of_screen(0.598, 0.007, 0.997, 0.424),
+        threshold=0.90,
+    )
+    if close_dialog:
+        task.log_info("检测到剧情对话关闭按钮，点击关闭")
+        _move_and_click(
+            task,
+            (close_dialog.x + close_dialog.width / 2) / task.width,
+            (close_dialog.y + close_dialog.height / 2) / task.height,
+        )
+        task.sleep(1)
+        return True
+    return False
+
+
 def handle_auto_chat(task: TriggerTask):
-    """自动对话检查: autochatenable置信度低于0.96时点击开启。"""
+    """自动对话检查: 匹配任一自动对话特征，置信度低于0.96时点击开启。"""
     search_box = task.box_of_screen(0.655, 0.007, 0.996, 0.097)
-    auto_chat = task.find_one(feature_name="autochatenable", box=search_box)
+    auto_chat = task.find_one(
+        feature_name=["autochatenable", "autochatenable2"], box=search_box
+    )
     if auto_chat and auto_chat.confidence < 0.96:
         task.log_info(f"自动对话未开启，当前匹配置信度: {auto_chat.confidence:.2%}，点击开启")
-        task.click_box(auto_chat)
+        _move_and_click(
+            task,
+            (auto_chat.x + auto_chat.width / 2) / task.width,
+            (auto_chat.y + auto_chat.height / 2) / task.height,
+        )
         return True
     return False
 
 
 def handle_view_event(task: TriggerTask):
-    """查看事件页面: 在指定区域检测check特征并点击。"""
+    """查看事件页面: 在指定区域检测check或check2特征并点击。"""
     search_box = task.box_of_screen(0.084, 0.125, 0.995, 0.875)
-    check_box = task.find_one(feature_name="check", box=search_box)
+    check_box = task.find_one(feature_name=["check", "check2"], box=search_box)
     if check_box:
-        task.log_info("检测到查看事件，点击check特征")
-        task.click_box(check_box)
+        task.log_info(f"检测到查看事件，点击{check_box.name}特征")
+        _move_and_click(
+            task,
+            (check_box.x + check_box.width / 2) / task.width,
+            (check_box.y + check_box.height / 2) / task.height,
+        )
         task.sleep(0.5)
         return True
     return False
@@ -117,9 +148,9 @@ def handle_observe(task: TriggerTask):
 
 # 剧情模式页面处理函数列表（按优先级排序）
 PAGE_HANDLERS = [
+    handle_center_confirm,  #页面中央确认按钮（最高优先级）
     # handle_team_config,  #队伍配置（最高优先级）
-    handle_skip_story,  #跳过剧情（最高优先级）
-    handle_auto_chat,  #自动对话检查
+    handle_skip_story,  #跳过剧情
     handle_view_event,  #查看事件
     handle_confirm,  #确认按钮
     handle_enter,  #进入按钮
@@ -129,4 +160,7 @@ PAGE_HANDLERS = [
     handle_observe,  #观测卡厄思关卡
     handle_next_step,
     handle_battle_auto_check,  #自动战斗检测
+    handle_event_task,  #事件任务（倒数第三优先级）
+    handle_auto_chat,  #自动对话检查（倒数第二优先级）
+    handle_close_dialog,  #关闭剧情对话弹窗（最低优先级）
 ]

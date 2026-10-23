@@ -467,7 +467,7 @@ def recognize_event_options(
     """按事件选项特征识别最多三个事件描述。"""
     event_region = task.box_of_screen(*region)
     event_features = []
-    for feature_name in ("event1", "event2", "event3", "event4", "event5", "event6", "event7", "event8"):
+    for feature_name in ("event1", "event2", "event3", "event4", "event5", "event6", "event7", "event8", "event9"):
         for feature_box in task.find_feature(
             feature_name=feature_name,
             box=event_region,
@@ -3249,6 +3249,24 @@ def handle_event_task(task: TriggerTask):
         task.sleep(1)
         return True
 
+    # 检查任务区域中是否有 treasure、memoryshards、data_of_light 或 eyes 特征
+    treasure_box = task.box_of_screen(0.084, 0.121, 0.991, 0.762)
+    reward_features = task.find_feature(
+        feature_name=["treasure", "memoryshards", "data_of_light", "eyes"],
+        box=treasure_box,
+        threshold=0.7,
+    )
+    if reward_features:
+        task.log_info(f"检测到事件任务区域中有{reward_features[0].name}特征，优先点击")
+        reward_feature = reward_features[0]
+        _move_and_click(
+            task,
+            (reward_feature.x + reward_feature.width / 2) / task.width,
+            (reward_feature.y + reward_feature.height / 2) / task.height,
+        )
+        task.sleep(2)
+        return True
+
     upper_event_task = next(
         (task_info for task_info in tasks_info if task_info["y"] < 0.925),
         None,
@@ -3282,24 +3300,6 @@ def handle_event_task(task: TriggerTask):
 
     if reroll_empty_deck is True and is_initial_node:
         return handle_initial_node_task("移除2张", "刷空档")
-
-    # 检查任务区域中是否有 treasure、memoryshards 或 data_of_light 特征
-    treasure_box = task.box_of_screen(0.285, 0.297, 0.944, 0.721)
-    reward_features = task.find_feature(
-        feature_name=["treasure", "memoryshards", "data_of_light"],
-        box=treasure_box,
-        threshold=0.7,
-    )
-    if reward_features:
-        task.log_info(f"检测到事件任务区域中有{reward_features[0].name}特征，优先点击")
-        reward_feature = reward_features[0]
-        _move_and_click(
-            task,
-            (reward_feature.x + reward_feature.width / 2) / task.width,
-            (reward_feature.y + reward_feature.height / 2) / task.height,
-        )
-        task.sleep(2)
-        return True
 
     # 读取拉黑任务列表
     blacklist = _get_config_value(task, '拉黑任务', ["咒术卡牌"])

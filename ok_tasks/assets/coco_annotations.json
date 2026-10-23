@@ -311,6 +311,24 @@
             "file_name": "images/0.png",
             "width": 1920,
             "height": 1080
+        },
+        {
+            "id": 200,
+            "file_name": "images/1.png",
+            "width": 1920,
+            "height": 1080
+        },
+        {
+            "id": 203,
+            "file_name": "images/2.png",
+            "width": 1920,
+            "height": 1080
+        },
+        {
+            "id": 205,
+            "file_name": "images/1.png",
+            "width": 1920,
+            "height": 1080
         }
     ],
     "annotations": [
@@ -462,12 +480,12 @@
             "image_id": 45,
             "category_id": 12,
             "bbox": [
-                1490,
-                25,
-                83,
-                67
+                1502,
+                33,
+                63,
+                51
             ],
-            "area": 5561,
+            "area": 3213,
             "iscrowd": 0
         },
         {
@@ -1392,6 +1410,58 @@
             ],
             "area": 5254,
             "iscrowd": 0
+        },
+        {
+            "id": 84,
+            "image_id": 200,
+            "category_id": 84,
+            "bbox": [
+                1679,
+                73,
+                54,
+                59
+            ],
+            "area": 3186,
+            "iscrowd": 0
+        },
+        {
+            "id": 85,
+            "image_id": 203,
+            "category_id": 85,
+            "bbox": [
+                1671,
+                41,
+                37,
+                34
+            ],
+            "area": 1258,
+            "iscrowd": 0
+        },
+        {
+            "id": 86,
+            "image_id": 203,
+            "category_id": 86,
+            "bbox": [
+                678,
+                1024,
+                63,
+                43
+            ],
+            "area": 2709,
+            "iscrowd": 0
+        },
+        {
+            "id": 87,
+            "image_id": 205,
+            "category_id": 87,
+            "bbox": [
+                227,
+                735,
+                70,
+                58
+            ],
+            "area": 4060,
+            "iscrowd": 0
         }
     ],
     "categories": [
@@ -1808,6 +1878,26 @@
         {
             "id": 83,
             "name": "data_of_light",
+            "supercategory": ""
+        },
+        {
+            "id": 84,
+            "name": "close_dialog",
+            "supercategory": ""
+        },
+        {
+            "id": 85,
+            "name": "autochatenable2",
+            "supercategory": ""
+        },
+        {
+            "id": 86,
+            "name": "event9",
+            "supercategory": ""
+        },
+        {
+            "id": 87,
+            "name": "eyes",
             "supercategory": ""
         }
     ]
