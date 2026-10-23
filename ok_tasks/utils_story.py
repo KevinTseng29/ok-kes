@@ -15,6 +15,29 @@ from utils_chaos import handle_battle_auto_check
 
 # ------------------------- 页面处理函数 -------------------------
 
+def handle_story_complete(task: TriggerTask):
+    """精确匹配剧情页面右下区域的完成按钮。"""
+    complete_box = next(
+        (
+            box for box in task.all_texts
+            if box.name.strip() == "完成"
+            and 0.380 <= (box.x + box.width / 2) / task.width <= 0.995
+            and 0.882 <= (box.y + box.height / 2) / task.height <= 0.990
+        ),
+        None,
+    )
+    if complete_box:
+        task.log_info("检测到剧情完成按钮，点击完成")
+        _move_and_click(
+            task,
+            (complete_box.x + complete_box.width / 2) / task.width,
+            (complete_box.y + complete_box.height / 2) / task.height,
+        )
+        task.sleep(1)
+        return True
+    return False
+
+
 def handle_close_dialog(task: TriggerTask):
     """关闭剧情对话弹窗。"""
     close_dialog = task.find_one(
@@ -149,6 +172,7 @@ def handle_observe(task: TriggerTask):
 # 剧情模式页面处理函数列表（按优先级排序）
 PAGE_HANDLERS = [
     handle_center_confirm,  #页面中央确认按钮（最高优先级）
+    handle_story_complete,  #剧情完成按钮（高优先级）
     # handle_team_config,  #队伍配置（最高优先级）
     handle_skip_story,  #跳过剧情
     handle_view_event,  #查看事件
