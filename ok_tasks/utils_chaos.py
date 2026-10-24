@@ -33,6 +33,31 @@ import time
 # ------------------------- 卡厄思模式独有页面处理函数 -------------------------
 
 
+def handle_memory_process(task: TriggerTask):
+    """加工记忆页面：选择命中指定记忆的卡牌，否则跳过。"""
+    title = _get_region_text(task, (0.420, 0.072, 0.584, 0.169))
+    if "加工记忆" not in title:
+        return False
+
+    task.log_info("检测到加工记忆页面")
+    cards = recognize_cards(
+        task, region=(0.095, 0.204, 0.887, 0.868), page="加工记忆页面"
+    )[:3]
+    specified_memory = _get_config_value(task, "指定记忆卡牌", "")
+    if specified_memory:
+        for card in cards:
+            if is_subsequence(specified_memory, card["name"] + "：:" + card["description"]):
+                task.log_info(f"加工记忆页面：命中指定记忆卡牌「{card['name']}」")
+                _move_and_click(task, card["x"], card["y"])
+                task.sleep(1)
+                return True
+
+    task.log_info("加工记忆页面：未匹配到指定记忆卡牌，点击跳过")
+    _move_and_click(task, 0.762, 0.935)
+    task.sleep(1)
+    return True
+
+
 def handle_memory_card_select(task: TriggerTask):
     """记忆卡牌选择页面：优先目标卡牌，其次指定记忆，否则刷新可搜索的卡牌。"""
     title = _get_region_text(task, (0.341, 0.011, 0.670, 0.171))
@@ -101,9 +126,9 @@ def handle_memory_card_select(task: TriggerTask):
         refreshed = True
     if not refreshed:
         task.log_info("记忆卡牌选择页面：未命中目标，且未找到可用的重新搜索按钮")
-        if not specified_memory and cards:
+        if cards:
             card = random.choice(cards)
-            task.log_info(f"指定记忆卡牌为空且无法继续刷新，随机选择「{card['name']}」")
+            task.log_info(f"未命中目标且无法继续刷新，随机选择「{card['name']}」")
             _move_and_click(task, card["x"], card["y"])
             task.sleep(1)
     return True
@@ -1009,10 +1034,38 @@ def handle_precision_memory_process(task: TriggerTask):
     if "精密加工记忆" not in title_text:
         return False
 
+    cards = recognize_cards(
+        task, region=(0.366, 0.233, 0.639, 0.900), page="精密加工记忆页面"
+    )
+
     # 记录已进入过该页面，避免事件对话反复选择「精密加工记忆」造成死循环
     status = getattr(task, "node_status", None)
     if status is not None:
         status["precision_memory_visited"] = True
+
+    specified_memory = _get_config_value(task, "指定记忆卡牌", "")
+    if specified_memory and cards and not any(
+        is_subsequence(specified_memory, card["name"] + "：:" + card["description"])
+        for card in cards
+    ):
+        process_box = next(
+            (
+                box for box in task.all_texts
+                if 0.026 <= (box.x + box.width / 2) / task.width <= 0.315
+                and 0.708 <= (box.y + box.height / 2) / task.height <= 0.867
+                and "加工记忆" in box.name
+            ),
+            None,
+        )
+        if process_box:
+            task.log_info("当前卡牌未命中指定记忆卡牌，点击加工记忆")
+            _move_and_click(
+                task,
+                (process_box.x + process_box.width / 2) / task.width,
+                (process_box.y + process_box.height / 2) / task.height,
+            )
+            task.sleep(1)
+            return True
 
     region = (0.700, 0.730, 0.995, 0.870)
     box = next(
@@ -1151,6 +1204,7 @@ PAGE_HANDLERS = [
     handle_destiny_choice,
     handle_main_member_flash,
     handle_card_reward,
+    handle_memory_process,
     handle_memory_card_select,
     handle_select_card,
     handle_copy_member,
