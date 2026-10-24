@@ -27,6 +27,7 @@ from utils import (
 
 import re
 import random
+import time
 
 
 # ------------------------- 卡厄思模式独有页面处理函数 -------------------------
@@ -786,56 +787,74 @@ def handle_mask_card(task: TriggerTask):
     return True
 
 
-def handle_data_collected(task: TriggerTask):
-    """存储数据收集完成页面：按存档价值阈值决定是否删除。"""
-    box = find_box_at_point(task, 0.505, 0.111)
-    if box and _get_game_text(task, '存储数据收集完成') in box.name:
-        retain_threshold = _get_config_value(
-            task, '保留大于多少TB的存档', 62000
-        )
-        if retain_threshold <= 0:
-            task.log_info("保留大于多少TB的存档设置为0，保留全部存档")
-            return False
+def _archive_value_at(task: TriggerTask, center_x, center_y):
+    """读取垃圾桶左侧的存档价值(TB)，读不到返回 None。"""
+    value_box = find_box_at_point(task, center_x - 0.107, center_y - 0.025)
+    if not value_box:
+        return None
+    value_match = re.search(r'\d+', value_box.name.replace(',', ''))
+    return int(value_match.group()) if value_match else None
 
-        for feature_name in ["deletecards", "deletecards2", "deletecards3"]:
-            features = task.find_feature(
-                feature_name=feature_name,
-                horizontal_variance=0.005,
-                vertical_variance=0.005,
-            ) or []
-            for feature in features:
-                feature_center_x = (feature.x + feature.width / 2) / task.width
-                feature_center_y = (feature.y + feature.height / 2) / task.height
-                value_box = find_box_at_point(
-                    task,
-                    feature_center_x - 0.107,
-                    feature_center_y - 0.025,
-                )
-                value_match = (
-                    re.search(r'\d+', value_box.name.replace(',', ''))
-                    if value_box else None
-                )
-                archive_value = int(value_match.group()) if value_match else None
-                if archive_value is not None and archive_value > retain_threshold:
-                    task.log_info(
-                        f"{feature_name}对应存档价值{archive_value}TB高于保留阈值"
-                        f"{retain_threshold}TB，跳过删除"
-                    )
-                    continue
-                if archive_value is None:
-                    task.log_info(
-                        f"{feature_name}未识别到存档价值，按原逻辑点击删除"
-                    )
-                else:
-                    task.log_info(
-                        f"{feature_name}对应存档价值{archive_value}TB不高于阈值"
-                        f"{retain_threshold}TB，点击删除"
-                    )
-                task.click_box(feature)
-                task.sleep(1)
-                return True
-        task.log_info("检测到存储数据收集完成，由通用按钮处理")
+
+def handle_data_collected(task: TriggerTask):
+    """存储数据收集完成页面：低于阈值的存档点垃圾桶，弹确认就交给通用确认处理。"""
+    node_status = getattr(task, 'node_status', None)
+    box = find_box_at_point(task, 0.505, 0.111)
+    if not (box and _get_game_text(task, '存储数据收集完成') in box.name):
+        # 离开页面时清理点击记录，避免影响下一次
+        if node_status is not None:
+            node_status.pop('storage_delete_clicked', None)
         return False
+
+    retain_threshold = _get_config_value(
+        task, '保留大于多少TB的存档', 62000
+    )
+    if retain_threshold <= 0:
+        task.log_info("保留大于多少TB的存档设置为0，保留全部存档")
+        return False
+    if node_status is None:
+        return False
+
+    # 二次确认弹窗已经出现时不再点垃圾桶，交给通用确认按钮处理
+    if any(
+        "确认" in text_box.name or "确定" in text_box.name
+        for text_box in task.all_texts
+    ):
+        return False
+
+    # 刚点过垃圾桶，等一帧确认结果，避免同一槽位被连续点击
+    last_click = node_status.get('storage_delete_clicked')
+    if last_click and time.time() - last_click < 1:
+        return True
+
+    for feature_name in ["deletecards", "deletecards2", "deletecards3"]:
+        features = task.find_feature(
+            feature_name=feature_name,
+            horizontal_variance=0.005,
+            vertical_variance=0.005,
+        ) or []
+        for feature in features:
+            feature_center_x = (feature.x + feature.width / 2) / task.width
+            feature_center_y = (feature.y + feature.height / 2) / task.height
+            archive_value = _archive_value_at(task, feature_center_x, feature_center_y)
+            if archive_value is None:
+                # 读不到价值时不删除，避免误删高价值存档
+                task.log_info(f"{feature_name}未识别到存档价值，跳过删除以避免误删")
+                continue
+            if archive_value > retain_threshold:
+                task.log_info(
+                    f"{feature_name}对应存档价值{archive_value}TB高于保留阈值"
+                    f"{retain_threshold}TB，跳过删除"
+                )
+                continue
+            task.log_info(
+                f"{feature_name}对应存档价值{archive_value}TB不高于阈值"
+                f"{retain_threshold}TB，点击垃圾桶"
+            )
+            task.click_box(feature)
+            node_status['storage_delete_clicked'] = time.time()
+            return True
+    task.log_info("检测到存储数据收集完成，由通用按钮处理")
     return False
 
 

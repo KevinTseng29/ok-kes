@@ -3776,7 +3776,7 @@ def handle_rest(task: TriggerTask):
 
 
 def handle_shop(task: TriggerTask):
-    """德朗商店: 优先移除卡牌，其次按配置购买卡牌或装备，最后尝试免费刷新。"""
+    """德朗商店: 优先移除卡牌，其次按配置购买卡牌或装备，最后尝试免费或付费刷新。"""
     box = find_box_at_point(task, 0.729, 0.261)
     soldout = find_box_at_point(task, 0.727, 0.286)
     if (box and "移除卡牌" in box.name) or (soldout and "售" in soldout.name):
@@ -3932,6 +3932,65 @@ def handle_shop(task: TriggerTask):
             task.click_box(free_box)
             task.sleep(1)
             return True
+
+        # 免费次数用完后按钮只显示「剩余刷新次数 + 信用点价格」，按阈值决定是否付费刷新
+        refresh_count_text = "".join(
+            text_box.name.strip()
+            for text_box in sorted(task.all_texts, key=lambda item: item.x)
+            if 0.045 <= (text_box.x + text_box.width / 2) / task.width <= 0.115
+            and 0.912 <= (text_box.y + text_box.height / 2) / task.height <= 0.952
+        )
+        count_match = re.search(r"(\d+)\s*[/／]\s*(\d+)", refresh_count_text)
+        if not count_match:
+            task.log_info(
+                f"德朗商店未识别到刷新次数（识别值「{refresh_count_text}」），不付费刷新"
+            )
+            return False
+        refresh_remaining = int(count_match.group(1))
+        if refresh_remaining <= 0:
+            task.log_info(
+                f"德朗商店付费刷新次数已用完（{refresh_count_text}），不再刷新"
+            )
+            return False
+
+        refresh_credit_threshold = _get_config_value(task, "商店刷新信用点阈值", 300)
+        try:
+            refresh_credit_threshold = int(refresh_credit_threshold)
+        except (TypeError, ValueError):
+            refresh_credit_threshold = 300
+        if current_credit <= refresh_credit_threshold:
+            task.log_info(
+                f"德朗商店免费刷新已用完，当前信用点{current_credit}未超过阈值"
+                f"{refresh_credit_threshold}，不付费刷新"
+            )
+            return False
+
+        refresh_price_box = next(
+        (text_box for text_box in task.all_texts
+         if 0.160 <= (text_box.x + text_box.width / 2) / task.width <= 0.220
+         and 0.915 <= (text_box.y + text_box.height / 2) / task.height <= 0.950
+         and text_box.name.strip().isdigit()),
+        None,
+        )
+        if not refresh_price_box:
+            task.log_info("德朗商店免费刷新已用完，未识别到刷新价格，不付费刷新")
+            return False
+
+        refresh_price = int(refresh_price_box.name.strip())
+        if refresh_price > current_credit:
+            task.log_info(
+                f"德朗商店付费刷新需{refresh_price}信用点，当前{current_credit}，"
+                "不足，不刷新"
+            )
+            return False
+
+        task.log_info(
+            f"德朗商店免费刷新已用完，当前信用点{current_credit}超过阈值"
+            f"{refresh_credit_threshold}，付费刷新需{refresh_price}信用点，点击刷新"
+        )
+        task.click_box(refresh_price_box)
+        task.sleep(1)
+        return True
     return False
 
 

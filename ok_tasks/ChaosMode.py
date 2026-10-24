@@ -52,6 +52,7 @@ class ChaosMode(TriggerTask):
         self.default_config['复制卡牌列表'] = ["展开极光", "剑雨", "缕光芒", "一缕光芒", "万众英雄"]
         self.default_config['需要冥想的卡牌'] = ["剑雨", "展开极光"]
         self.default_config['多少信用点以上冥想'] = 300
+        self.default_config['商店刷新信用点阈值'] = 300
         self.default_config['装备1号位优先级'] = ["蚀化臂铠"]
         self.default_config['装备2号位优先级'] = ["拷问工具箱"]
         self.default_config['装备3号位优先级'] = ["异象石碑"]
@@ -116,6 +117,9 @@ class ChaosMode(TriggerTask):
         )
         self.config_description['首层刷特定闪光'] = (
             "默认刷闪光优先级第一张，可刷神闪，第一层没刷出自动逃脱"
+        )
+        self.config_description['商店刷新信用点阈值'] = (
+            "德朗商店免费刷新次数用完后，仅当信用点大于该值且足够支付刷新价格时才付费刷新。"
         )
 
     def load_config(self):

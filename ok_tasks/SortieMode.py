@@ -41,6 +41,7 @@ class SortieMode(TriggerTask):
         self.default_config["装备3号位优先级"] = ["异象石碑"]
         self.default_config["只打第一层"] = True
         self.default_config["进入商店"] = False
+        self.default_config["商店刷新信用点阈值"] = 300
         self.default_config["优先移除基础牌"] = True
         self.default_config["几轮后停止(0为不停止)"] = 0
         self.default_config["卡牌奖励优先级"] = ["梦之边境", "装备包"]
@@ -81,6 +82,9 @@ class SortieMode(TriggerTask):
             '第几层boss前自动暂停': {'type': 'drop_down', 'options': ['不暂停', '1', '2', '3']},
         }
         self.config_description['游戏语言'] = "国际服请设置为繁体中文"
+        self.config_description['商店刷新信用点阈值'] = (
+            "德朗商店免费刷新次数用完后，仅当信用点大于该值且足够支付刷新价格时才付费刷新。"
+        )
 
     def load_config(self):
         migrate_game_language_config_file(self)
