@@ -21,6 +21,7 @@ import preset_deck_ui as ui
 
 SAMPLE = json.loads((ROOT / "tests/fixtures/ross_preset.json").read_text(encoding="utf-8"))
 PRESET = {"charId": SAMPLE["character_id"], "cards": SAMPLE["entries"]}
+NEW_PRESETS = json.loads((ROOT / "tests/fixtures/mika_lida_presets.json").read_text(encoding="utf-8"))
 
 
 def response(value, status=200):
@@ -53,12 +54,23 @@ class ImportConversionTests(unittest.TestCase):
         self.assertEqual(records[4]["effects"], ["触发手牌中所有明、暗卡牌效果"])
         self.assertEqual(records[0]["divine_text"], ["此卡牌的伤害量增加30%"])
 
-    def test_unknown_card_or_divine_never_returns_partial_deck(self):
-        for field in ["variantCardId", "divineId"]:
+    def test_unknown_fields_preserve_other_cards_and_usable_fields(self):
+        original_records = importer.convert_preset(PRESET)[0]
+        for field in ["variantCardId", "divineId", "epiphanyId"]:
             preset = copy.deepcopy(PRESET)
             preset["cards"][-1][field] = "unknown_id"
-            with self.assertRaises(importer.DeckImportError):
-                importer.convert_preset(preset)
+            with self.subTest(field=field):
+                records, warnings, _ = importer.convert_preset(preset)
+                self.assertEqual(len(records), 8)
+                self.assertEqual(records[:-1], original_records[:-1])
+                self.assertEqual(records[-1]["name"], original_records[-1]["name"])
+                self.assertTrue(records[-1]["import_notes"])
+                self.assertTrue(warnings)
+                if field == "variantCardId":
+                    self.assertEqual(records[-1]["effects"], [])
+                else:
+                    self.assertEqual(records[-1]["effects"], original_records[-1]["effects"])
+                self.assertNotIn("unknown_id", str(records[-1]["effects"] + records[-1]["divine_text"]))
 
     def test_invalid_records_and_empty_active_deck(self):
         for preset in [{"cards": []}, {"cards": [None]}, {"cards": [{"removed": "false"}]},
@@ -66,13 +78,65 @@ class ImportConversionTests(unittest.TestCase):
             with self.subTest(preset=preset), self.assertRaises(importer.DeckImportError):
                 importer.convert_preset(preset)
 
-    def test_unsupported_epiphany_and_language_are_explicit(self):
-        preset = copy.deepcopy(PRESET)
-        preset["cards"][-1]["epiphanyId"] = "unknown"
-        with self.assertRaisesRegex(importer.DeckImportError, "灵光"):
-            importer.convert_preset(preset)
+    def test_unsupported_language_is_explicit(self):
         with self.assertRaises(importer.DeckImportError):
             importer.convert_preset(PRESET, "English")
+
+    def test_real_mika_short_divine_and_general_epiphany(self):
+        for language in ("简体中文", "繁体中文"):
+            with self.subTest(language=language):
+                records, warnings, _ = importer.convert_preset(NEW_PRESETS["mika"], language)
+                self.assertEqual(len(records), 7)
+                self.assertEqual([r["name"] for r in records].count("水之根源"), 4)
+                self.assertEqual([r["divine_text"] for r in records[:4]], [["抽取1"]] * 3 + [[]])
+                self.assertEqual(records[4]["effects"], ["水波2"])
+                self.assertEqual(records[-1]["effects"], ["不屈1"])
+                # The healing percentage is dynamic and cannot distinguish all
+                # 作战分析 variants with the remaining static text alone.
+                self.assertEqual(len(warnings), 1)
+                self.assertIn("区分", records[4]["import_notes"][0])
+
+    def test_real_lida_general_epiphanies_preserve_copies_and_locale(self):
+        original = copy.deepcopy(NEW_PRESETS["lida"])
+        for language, name, effect in [("简体中文", "破坏时间轴", "持续1回合，获得士气3"),
+                                        ("繁体中文", "破壞時間軸", "持續1回合，獲得士氣3")]:
+            with self.subTest(language=language):
+                records, warnings, _ = importer.convert_preset(original, language)
+                self.assertEqual(len(records), 11)
+                self.assertEqual([r["name"] for r in records[1:4]], [name] * 3)
+                self.assertEqual([r["effects"] for r in records[1:4]], [[effect]] * 3)
+                morale = "士气" if language == "简体中文" else "士氣"
+                self.assertEqual([r["name"] for r in records[5:9]], ["急救包"] * 4)
+                self.assertEqual([r["effects"] for r in records[5:]],
+                                 [[morale + "2"]] * 4 + [[morale + "1"], [morale + "2"]])
+                self.assertEqual(warnings, [])
+        self.assertEqual(original, NEW_PRESETS["lida"])
+
+    def test_mixed_bad_records_do_not_discard_valid_or_unknown_named_rows(self):
+        active = next(copy.deepcopy(e) for e in PRESET["cards"] if not e.get("removed"))
+        preset = {"cards": [None, active, {"cardId": "new_card"},
+                            {"cardId": [], "variantCardId": active["cardId"]},
+                            {"cardId": active["cardId"], "variantCardId": []},
+                            {"cardId": active["cardId"], "epiphanyId": [], "divineId": ["invalid"]},
+                            {"removed": "false"}, {"removed": True}]}
+        records, warnings, _ = importer.convert_preset(preset)
+        self.assertEqual(len(records), 5)
+        self.assertEqual(records[0], importer.convert_preset({"cards": [active]})[0][0])
+        self.assertIn("未识别卡牌", records[1]["name"])
+        self.assertEqual(records[1]["effects"], [])
+        self.assertIn("import_notes", records[1])
+        self.assertTrue(any("已跳过" in note for note in warnings))
+        self.assertTrue(any("神闪" in note for note in records[-1]["import_notes"]))
+
+    def test_variant_and_extra_epiphany_are_not_written_as_alternatives(self):
+        preset = copy.deepcopy(NEW_PRESETS["mika"])
+        active = next(e for e in preset["cards"] if not e.get("removed"))
+        baseline = importer.convert_preset(preset)[0][0]["effects"]
+        active["epiphanyId"] = "c03012"
+        records, warnings, _ = importer.convert_preset(preset)
+        self.assertEqual(records[0]["effects"], baseline)
+        self.assertTrue(warnings)
+        self.assertTrue(any("附加灵光" in note for note in records[0]["import_notes"]))
 
     def test_ambiguous_dynamic_variant_warns(self):
         catalog = {"characters": {}, "divine": {}, "cards": {
@@ -85,6 +149,7 @@ class ImportConversionTests(unittest.TestCase):
 
     def test_unresolved_markup_is_not_written_to_ocr_keywords(self):
         self.assertEqual(importer._keywords("手牌中有此卡牌時士氣#1減少1\n^UNKNOWN^\n正常效果關鍵字"), ["正常效果關鍵字"])
+        self.assertEqual(importer._keywords("抽取1\n50%\n#unknown#\n<unknown>", min_length=2), ["抽取1"])
 
 
 class ServiceTests(unittest.TestCase):

@@ -1,7 +1,8 @@
 """Official share code import through CZNMetaDecks, with local Chinese OCR text.
 
-The public builder's Server Action is not a stable API. Failures never produce a
-partial preset, and conversion is kept separate from networking for validation.
+The public builder's Server Action is not a stable API. Unreadable whole codes
+fail without replacing presets. Local conversion preserves usable fields and
+attaches per-card notes for fields that need manual completion.
 """
 import json
 import re
@@ -122,11 +123,14 @@ def _compact(text):
     return re.sub(r"[\W_]+", "", text).lower()
 
 
-def _keywords(text):
+def _keywords(text, min_length=4):
     # Placeholders and unresolved references are never written into OCR config.
+    if not isinstance(text, str):
+        return []
     fragments = re.split(r"#[^#\n]+#|\^[^\^\n]+\^|\n", text)
     return [part.strip(" ，。、：:；;").lstrip("%+-") for part in fragments
-            if len(_compact(part)) >= 4 and not re.search(r"[#^<>]", part)]
+            if len(_compact(part)) >= min_length and not re.search(r"[#^<>]", part)
+            and re.search(r"[^\W\d_]", part)]
 
 
 def convert_preset(preset, language="简体中文", catalog=None):
@@ -140,48 +144,83 @@ def convert_preset(preset, language="简体中文", catalog=None):
     converter = OpenCC("t2s")
     translate = converter.convert if language == "简体中文" else str
     records, warnings = [], []
-    for entry in cards:
+    for index, entry in enumerate(cards, 1):
         if not isinstance(entry, dict) or type(entry.get("removed", False)) is not bool:
-            raise DeckImportError("解析结果中的卡牌记录无效，原预设已保留。")
+            warnings.append(f"第 {index} 条卡牌记录格式异常，已跳过；其他卡牌继续导入。")
+            continue
         if entry.get("removed"):
             continue
         base_id = entry.get("cardId")
         variant = entry.get("variantCardId") or base_id
-        if not isinstance(base_id, str) or not isinstance(variant, str):
-            raise DeckImportError("解析结果中的卡牌 ID 无效，原预设已保留。")
+        notes = []
+        if not isinstance(base_id, str) or not base_id.strip():
+            if isinstance(variant, str) and variant.strip():
+                base_id = variant
+                notes.append("基础卡牌 ID 缺失，已按变体保留可识别内容。")
+            else:
+                warnings.append(f"第 {index} 条卡牌缺少有效 ID，已跳过；其他卡牌继续导入。")
+                continue
+        if not isinstance(variant, str):
+            variant = base_id
+            notes.append("变体字段格式异常，请检查卡牌效果。")
         card = catalog["cards"].get(variant)
         base = catalog["cards"].get(base_id)
-        if not card or not base:
-            raise DeckImportError(f"缺少卡牌 {variant} 的中文映射，导入已停止，原预设已保留。")
-        name = translate(base["name"])
-        if entry.get("epiphanyId"):
-            raise DeckImportError(f"「{name}」含暂不支持的灵光字段，导入已停止，原预设已保留。")
-        candidates = _keywords(card["text"])
-        siblings = [value["text"] for key, value in catalog["cards"].items()
+        named_card = base or card
+        if named_card and named_card.get("name"):
+            name = translate(named_card["name"]).replace("\u200b", "").strip()
+        else:
+            name = f"未识别卡牌（{base_id}）"
+            notes.append(f"卡牌名称待补充：缺少 {base_id} 的中文映射。")
+        if not card:
+            notes.append(f"卡牌效果待补充：缺少 {variant} 的效果映射。")
+        candidates = _keywords(card.get("text", "") if card else "", min_length=3)
+        siblings = [value.get("text", "") for key, value in catalog["cards"].items()
                     if key != variant and (key == base_id or key.startswith(str(base_id) + "_rsp"))]
         def matches(keyword):
             return sum(_compact(keyword) in _compact(text) for text in siblings)
         # One keyword, because the existing preset matcher treats multiple lines as OR.
         candidates.sort(key=lambda text: (matches(text), -len(_compact(text))))
         effect = candidates[0] if candidates else ""
-        if not effect or (variant != base_id and siblings and matches(effect)):
-            warnings.append(f"「{name}」的效果可能无法区分所有同名变体，请在列表中检查效果关键字。")
+        epiphany_id = entry.get("epiphanyId")
+        if epiphany_id:
+            # The same game table contains general epiphanies and god effects.
+            # Generic epiphanies have their own text rather than an rsp variant.
+            template = catalog["divine"].get(epiphany_id) if isinstance(epiphany_id, str) else None
+            parts = _keywords(template, min_length=2)
+            if parts:
+                modifier = max(parts, key=len)
+                if variant == base_id:
+                    # Name + modifier identifies the chosen general epiphany.
+                    # Do not OR it with the common base description, which would
+                    # accept all other epiphanies of the same card.
+                    effect = modifier
+                else:
+                    notes.append(f"此卡同时含变体和附加灵光「{translate(modifier)}」；已保留变体效果，请检查并补充附加灵光。")
+                if re.search(r"#[^#]+#|\^[^\^]+\^", template):
+                    notes.append("普通灵光含动态数值，已导入固定文字，请检查关键字。")
+            else:
+                notes.append(f"普通灵光待补充（{epiphany_id}），已保留卡牌与可识别效果。")
+        if not effect:
+            notes.append("卡牌效果待补充；效果留空时仅按卡牌名匹配。")
+        elif not epiphany_id and variant != base_id and siblings and matches(effect):
+            notes.append("效果可能无法区分所有同名变体，请检查效果关键字。")
         divine_id = entry.get("divineId")
         divine = ""
         if divine_id:
-            if not isinstance(divine_id, str):
-                raise DeckImportError("解析结果中的神闪 ID 无效，原预设已保留。")
-            divine_template = catalog["divine"].get(divine_id)
-            if not divine_template:
-                raise DeckImportError(f"缺少「{name}」的神闪中文映射，导入已停止，原预设已保留。")
-            divine_parts = _keywords(divine_template)
-            if not divine_parts:
-                raise DeckImportError(f"「{name}」的神闪文本暂不能转换，原预设已保留。")
-            divine = max(divine_parts, key=len)
-            if re.search(r"#[^#]+#|\^[^\^]+\^", divine_template):
-                warnings.append(f"「{name}」的神闪含动态数值，已导入固定文字，请检查神闪关键字。")
-        records.append({"name": name, "effects": [translate(effect)] if effect else [],
-                        "divine_text": [translate(divine)] if divine else [], "reject_divine": False})
+            divine_template = catalog["divine"].get(divine_id) if isinstance(divine_id, str) else None
+            divine_parts = _keywords(divine_template, min_length=2)
+            if divine_parts:
+                divine = max(divine_parts, key=len)
+                if re.search(r"#[^#]+#|\^[^\^]+\^", divine_template):
+                    notes.append("神闪含动态数值，已导入固定文字，请检查神闪关键字。")
+            else:
+                notes.append(f"神闪效果待补充（{divine_id}），已保留卡牌与普通效果。")
+        record = {"name": name, "effects": [translate(effect)] if effect else [],
+                  "divine_text": [translate(divine)] if divine else [], "reject_divine": False}
+        if notes:
+            record["import_notes"] = list(dict.fromkeys(notes))
+            warnings.extend(f"第 {len(records) + 1} 张「{name}」：{note}" for note in record["import_notes"])
+        records.append(record)
     if not records:
         raise DeckImportError("卡组中没有可导入的保留卡牌，原预设已保留。")
     character = catalog.get("characters", {}).get(str(preset.get("charId")), "")
