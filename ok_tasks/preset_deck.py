@@ -134,12 +134,16 @@ def _normalize_record(raw):
     reject = raw.get("reject_divine")
     if reject is None:
         reject = raw.get("reject_flash", False)
-    return {
+    record = {
         "name": name,
         "effects": effects,
         "divine_text": divine_text,
         "reject_divine": bool(reject),
     }
+    notes = _as_list(raw.get("import_notes"))
+    if notes:
+        record["import_notes"] = notes
+    return record
 
 
 def load_preset_records(task):

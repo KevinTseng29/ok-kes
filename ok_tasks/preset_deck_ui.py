@@ -7,6 +7,7 @@ import copy
 import threading
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -86,6 +87,7 @@ class DeckCodeImportDialog(QDialog):
         hint = QLabel(
             f"导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
             "成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n"
+            "能识别的字段会尽量导入，缺失字段在表格「导入提示」列标出，可双击补填。\n"
             "联网解析会将卡组码发送到 cznmetadecks.com；部分卡组码可能暂不受支持。\n"
             "含【记忆】等赛季卡的卡组码可能无法解析。若解析失败，请先在原 BD 中去掉赛季卡，"
             "重新导出卡组码后再导入。"
@@ -201,6 +203,10 @@ class PresetCardDialog(QDialog):
         }
 
         layout = QVBoxLayout(self)
+        if self.record.get("import_notes"):
+            notes_label = QLabel("导入待补充：\n" + "\n".join(self.record["import_notes"]) + "\n编辑后点击「确定」将清除此卡的导入提示。")
+            notes_label.setWordWrap(True)
+            layout.addWidget(notes_label)
         layout.addWidget(QLabel("卡牌名（必填，填卡面上能认出的名字即可）"))
         self.name_edit = QLineEdit(str(self.record.get("name", "")))
         self.name_edit.setPlaceholderText("例如：光之剑路")
@@ -283,7 +289,7 @@ class PresetDeckDialog(QDialog):
         title.setFont(self.font())
         layout.addWidget(title)
 
-        self.table = QTableWidget(0, 4, self)
+        self.table = QTableWidget(0, 5, self)
         self.table.setFont(self.font())
         self.table_item_font = self.font()
         self.table.setWordWrap(False)
@@ -292,7 +298,7 @@ class PresetDeckDialog(QDialog):
         self.table.verticalHeader().setDefaultSectionSize(
             self.table.fontMetrics().height() + 8 + _mm_to_px(0.5)
         )
-        self.table.setHorizontalHeaderLabels(["顺序", "卡牌名", "卡牌效果", "神闪效果"])
+        self.table.setHorizontalHeaderLabels(["顺序", "卡牌名", "卡牌效果", "神闪效果", "导入提示"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -305,6 +311,8 @@ class PresetDeckDialog(QDialog):
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        self.table.setColumnWidth(4, 180)
         self.table.doubleClicked.connect(lambda _: self._edit())
         layout.addWidget(self.table, 1)
 
@@ -353,12 +361,15 @@ class PresetDeckDialog(QDialog):
                 str(record.get("name", "")),
                 "；".join(record.get("effects", []) or []),
                 _record_divine_display(record),
+                "；".join(record.get("import_notes", []) or []),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setFont(self.table_item_font)
                 item.setData(Qt.UserRole, record)
                 item.setToolTip(value)
+                if column == 4 and value:
+                    item.setForeground(QColor("#b36b00"))
                 self.table.setItem(row, column, item)
         if self.records:
             row = select_row if select_row is not None else 0
@@ -454,8 +465,13 @@ class PresetDeckDialog(QDialog):
         self._refresh(0)
         text = f"已覆盖为{('「' + character + '」') if character else ''}卡组，共 {len(records)} 张卡。\n点击「保存」写入配置，点击「取消」放弃本次修改。"
         if warnings:
-            text += "\n\n需要检查：\n" + "\n".join(warnings)
-        QMessageBox.information(self, "导入完成", text)
+            count = sum(bool(record.get("import_notes")) for record in records)
+            text += f"\n\n已保留可识别的数据，{count} 张卡有字段需要补充。\n查看表格「导入提示」列，双击对应卡牌编辑。\n跳过的异常记录等信息可展开「详细信息」查看。"
+            message = QMessageBox(QMessageBox.Information, "导入完成，请检查", text, QMessageBox.Ok, self)
+            message.setDetailedText("\n".join(warnings))
+            message.exec()
+        else:
+            QMessageBox.information(self, "导入完成", text)
 
     def _save(self):
         for record in self.records:
