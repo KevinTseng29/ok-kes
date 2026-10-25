@@ -1,104 +1,37 @@
-# 打包指南
+# Windows 实验版打包
 
-## 前置条件
+使用 Windows x64、Python 3.12 和项目本地虚拟环境。源码仍显示 `dev`，版本号仅写入打包暂存副本。
 
-本项目的打包环境为 conda 的 `oknikke` 环境（Python 3.12），使用该环境的 python 和 pip 执行打包命令。
-
-```bash
-pip install -r requirements.txt
-pip install pyinstaller
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+.\.venv\Scripts\python.exe scripts/build_portable.py --version v1.4.10-alpha.1
 ```
 
-## 打包步骤
+产物位于 `dist`：单文件便携 exe 和 `SHA256SUMS.txt`。用户直接双击 exe，无需安装 Python；程序会请求管理员权限，配置写入 exe 旁的 `configs` 目录。
 
-### 1. 内联依赖
+打包脚本仅复制 `main.py`、`src`、`ok_tasks`、图标、翻译及必要图片到 `build` 下的独立暂存目录，不打包个人配置、日志、截图、研究样本或虚拟环境。PyInstaller 从当前虚拟环境收集运行库和 OCR 模型，不改动第三方库或源码版本字段。
 
-将 ok-script 和 pyappify 运行时库内联到项目中：
+OpenCC 运行库需要纯英文资源路径，因此单文件运行时会解压到 `C:\Temp\ok-kes` 下的独立临时目录。输出目录与中间文件均被 Git 忽略，exe 只作为 Release 附件发布。
 
-```bash
-python -m ok.update.inline_ok_requirements
+## 冻结程序自检
+
+自检不连接游戏、不发送点击，也不联网解码卡组。它检查本地动态库、OpenCC 字典、实验任务、预设编辑器、中文卡牌映射和 UI 资源，并实际执行一次 OCR 模型推理。
+
+```powershell
+$exe = (Get-ChildItem dist/ok-kes-experimental-win64-*.exe | Select-Object -First 1).FullName
+$report = Join-Path (Get-Location) "build/portable-self-test.json"
+$env:__COMPAT_LAYER = "RunAsInvoker"
+$process = Start-Process -FilePath $exe -ArgumentList @("--self-test", "--self-test-report", "`"$report`"") -WindowStyle Hidden -Wait -PassThru
+if ($process.ExitCode -ne 0) { throw "冻结程序自检失败，请检查 $report" }
+Get-Content $report
 ```
 
-### 2. 执行 PyInstaller 打包
+`RunAsInvoker` 仅用于不操作游戏的构建自检；正常双击 exe 仍会请求管理员权限。
 
-```bash
-pyinstaller --onefile --noconsole --uac-admin --noupx --runtime-tmpdir "C:\Temp\ok_kes" --name "ok-kes-win32-portable-v1.3.1" --icon icons/icon.ico ^
-  --add-data assets;assets ^
-  --add-data i18n;i18n ^
-  --add-data ok_tasks;ok_tasks ^
-  --add-data "C:\Users\baoxin\miniconda3\envs\oknikke\Lib\site-packages\opencc\clib;opencc\clib" ^
-  --add-data "C:\Users\baoxin\miniconda3\envs\oknikke\Lib\site-packages\opencc\clib\share\opencc;opencc\lib\share\opencc" ^
-  --hidden-import ok_tasks.SortieMode ^
-  --hidden-import ok_tasks.ChaosMode ^
-  --hidden-import utils_sortie ^
-  --hidden-import utils_chaos ^
-  --hidden-import src.globals ^
-  --hidden-import src.tasks.MyOneTimeTask ^
-  --hidden-import onnxocr ^
-  --hidden-import onnxocr_ppocrv5 ^
-  --exclude-module PySide6.translations ^
-  --collect-all onnxocr ^
-  --collect-all onnxruntime ^
-  --collect-all pyappify ^
-  main.py
-```
+## GitHub 发布
 
-### 3. 清理临时文件
+推送 `v*-alpha.*` 注解标签后，`.github/workflows/build.yml` 会在 Windows 上运行测试、重新打包和冻结自检，全部成功后向当前仓库发布预发布 Release。仅使用当前仓库的 `GITHUB_TOKEN`，不依赖上游 CNB、Mirror酱或维护者的密钥。
 
-```bash
-rmdir /s /q build
-del "ok-kes-win32-portable-v1.3.1.spec"
-```
-
-### 4. 产物
-
-位于 `dist\ok-kes-win32-portable-v1.3.1.exe`，约 265 MB。
-
-## 关键说明
-
-> **⚠️ 注意**：`build_exe.bat` 必须使用 **GBK/ANSI 编码**保存，CMD 才能正确解析中文文件名。如果用 UTF-8 编码，打包出来的 exe 名称会显示为乱码。
-
-| 参数 | 作用 |
-|---|---|
-| `--onefile` | 单文件 exe，用户下载即用 |
-| `--noconsole` | 无控制台窗口 |
-| `--uac-admin` | 请求管理员权限 |
-| `--add-data ok_tasks;ok_tasks` | 打包任务文件，运行时通过 `os.chdir(sys._MEIPASS)` 找到 |
-| `--hidden-import src.globals` | 动态引用的全局对象模块 |
-| `--collect-all onnxruntime` | 包含 ONNX Runtime 运行库和 CPU 执行提供程序 |
-| `--collect-all onnxocr` | 包含 OCR 模型文件（.onnx）和代码 |
-| `--runtime-tmpdir` | 指定纯英文临时解压路径，避免中文用户名导致 OpenCC C 库 fopen 失败 |
-| `--add-data opencc\clib;opencc\clib` | 打包 OpenCC 绑定的动态库和字典文件 |
-| `--add-data opencc\lib\share\opencc` | 额外映射字典目录到 lib 路径，解决中文路径下 C 库查找 `t2s.json` 失败 |
-| `--exclude-module PySide6.translations` | 排除 PySide6 翻译文件（.qm），避免某些系统上解压 CRC 校验失败 |
-
-## 代码层面的必要修改
-
-打包前需要确保以下修改已存在：
-
-### `main.py`
-```python
-import sys
-import os
-
-if __name__ == '__main__':
-    if getattr(sys, 'frozen', False):
-        exe_dir = os.path.dirname(sys.executable)
-        os.chdir(sys._MEIPASS)  # 切换到临时解压目录，使 ok_tasks 等数据文件可被找到
-        config["config_folder"] = os.path.join(exe_dir, "configs")  # 配置文件保存在 exe 目录下，避免被临时目录清除
-```
-
-### `ok/gui/MainWindow.py`
-- 顶部添加 `import sys`
-
-### `ok/gui/tasks/TaskManger.py`
-`find_and_instantiate_class` 方法添加编码回退逻辑，解决 GBK/ANSI 编码文件导致 `utf-8' codec can't decode byte` 报错：
-```python
-def find_and_instantiate_class(self, file_path, base_class):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            tree = ast.parse(file.read(), filename=file_path)
-    except UnicodeDecodeError:
-        with open(file_path, 'r', encoding=sys.getfilesystemencoding()) as file:
-            tree = ast.parse(file.read(), filename=file_path)
-```
+也可手动触发工作流，填写已经存在的版本标签。实验功能和限制见 [实验版发布说明](docs/releases/experimental.md)。不要将 exe、`configs`、`.venv`、`build` 或 `dist` 提交到 Git。
