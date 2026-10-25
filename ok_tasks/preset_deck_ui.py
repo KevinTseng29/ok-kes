@@ -1,0 +1,343 @@
+"""预设卡组编辑器（实验模式配置里的“编辑预设卡组”按钮）。
+
+界面刻意保持简单：一个列表 + 添加/编辑/复制/删除/上移/下移/从闪光优先级导入。
+一条记录代表一张卡，需要两张就复制一条。
+"""
+import copy
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
+
+from preset_deck import _normalize_record, convert_legacy_flash_priority
+
+
+def _bump_font(widget, delta=2):
+    """把控件字号整体加大两号。"""
+    font = widget.font()
+    if font.pointSize() > 0:
+        font.setPointSize(font.pointSize() + delta)
+    else:
+        pixel_size = font.pixelSize()
+        font.setPixelSize((pixel_size if pixel_size > 0 else 12) + delta)
+    widget.setFont(font)
+    return font
+
+
+def _mm_to_px(mm):
+    """按主屏幕逻辑 DPI 把毫米换算成行高像素。"""
+    try:
+        screen = QApplication.primaryScreen()
+        dpi = screen.logicalDotsPerInch() if screen is not None else 96.0
+    except Exception:
+        dpi = 96.0
+    if not dpi or dpi <= 0:
+        dpi = 96.0
+    return max(1, round(float(mm) / 25.4 * dpi))
+
+
+def _record_divine_display(record):
+    texts = record.get("divine_text", []) or []
+    text = "；".join(texts) if texts else "不判断"
+    if record.get("reject_divine"):
+        text += "（拒绝神闪）"
+    return text
+
+
+class PresetCardDialog(QDialog):
+    """单张预设卡的添加/编辑窗口。"""
+
+    def __init__(self, parent=None, record=None):
+        super().__init__(parent)
+        _bump_font(self)
+        self.setWindowTitle("编辑预设卡牌")
+        self.resize(480, 540)
+        self.record = copy.deepcopy(record) if record else {
+            "name": "",
+            "effects": [],
+            "divine_text": [],
+            "reject_divine": False,
+        }
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("卡牌名（必填，填卡面上能认出的名字即可）"))
+        self.name_edit = QLineEdit(str(self.record.get("name", "")))
+        self.name_edit.setPlaceholderText("例如：光之剑路")
+        layout.addWidget(self.name_edit)
+
+        layout.addWidget(QLabel("卡牌效果（一行一个关键字，任意一行命中即可）"))
+        self.effect_edit = QPlainTextEdit()
+        self.effect_edit.setPlaceholderText("例如：造成360%的伤害\n本回合叠加凝聚")
+        self.effect_edit.setPlainText("\n".join(self.record.get("effects", []) or []))
+        layout.addWidget(self.effect_edit, 1)
+
+        layout.addWidget(QLabel("神闪效果（神闪图标后面那行文本，一行一个关键字）"))
+        self.divine_edit = QPlainTextEdit()
+        self.divine_edit.setPlaceholderText("例如：此卡牌费用减少1\n生成2张剑穗")
+        self.divine_edit.setPlainText("\n".join(self.record.get("divine_text", []) or []))
+        layout.addWidget(self.divine_edit, 1)
+
+        self.reject_check = QCheckBox("拒绝神闪（这张卡出现神闪形态时不选它）")
+        self.reject_check.setChecked(bool(self.record.get("reject_divine")))
+        layout.addWidget(self.reject_check)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.cancel_button = QPushButton("取消")
+        self.ok_button = QPushButton("确定")
+        self.ok_button.setDefault(True)
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.ok_button)
+        layout.addLayout(buttons)
+
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.clicked.connect(self._accept)
+
+    def _accept(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "提示", "卡牌名不能为空")
+            return
+        self.record = {
+            "name": name,
+            "effects": [
+                line.strip()
+                for line in self.effect_edit.toPlainText().splitlines()
+                if line.strip()
+            ],
+            "divine_text": [
+                line.strip()
+                for line in self.divine_edit.toPlainText().splitlines()
+                if line.strip()
+            ],
+            "reject_divine": self.reject_check.isChecked(),
+        }
+        self.accept()
+
+
+class PresetDeckDialog(QDialog):
+    """预设卡组列表窗口。"""
+
+    def __init__(self, task, parent=None):
+        super().__init__(parent)
+        _bump_font(self)
+        self.task = task
+        config = getattr(task, "config", None)
+        raw = config.get("预设卡组", []) if isinstance(config, dict) else []
+        if isinstance(raw, list):
+            self.records = [
+                record for record in (_normalize_record(item) for item in raw) if record
+            ]
+        else:
+            self.records = []
+        self.setWindowTitle("预设卡组")
+        self.resize(980, 620)
+
+        layout = QVBoxLayout(self)
+        title = QLabel(
+            "预设卡组（从上到下匹配；一条记录 = 一张卡，需要多张请用「复制」）\n"
+            "匹配顺序：卡牌名 → 卡牌效果 → 神闪效果；神闪形态可以在编辑里单独拒绝。"
+        )
+        title.setWordWrap(True)
+        title.setFont(self.font())
+        layout.addWidget(title)
+
+        self.table = QTableWidget(0, 4, self)
+        self.table.setFont(self.font())
+        self.table_item_font = self.font()
+        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.ElideRight)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.table.verticalHeader().setDefaultSectionSize(
+            self.table.fontMetrics().height() + 8 + _mm_to_px(0.5)
+        )
+        self.table.setHorizontalHeaderLabels(["顺序", "卡牌名", "卡牌效果", "神闪效果"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
+        header = self.table.horizontalHeader()
+        header.setFont(self.font())
+        header.setMinimumHeight(self.table.fontMetrics().height() + 14)
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.doubleClicked.connect(lambda _: self._edit())
+        layout.addWidget(self.table, 1)
+
+        toolbar = QHBoxLayout()
+        for text, handler in (
+            ("添加", self._add),
+            ("编辑", self._edit),
+            ("复制", self._copy),
+            ("删除", self._delete),
+            ("上移", self._move_up),
+            ("下移", self._move_down),
+            ("从闪光优先级导入", self._import_legacy),
+        ):
+            button = QPushButton(text)
+            button.setFont(self.font())
+            button.clicked.connect(handler)
+            toolbar.addWidget(button)
+        toolbar.addStretch(1)
+        layout.addLayout(toolbar)
+
+        bottom = QHBoxLayout()
+        bottom.addStretch(1)
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setFont(self.font())
+        self.save_button = QPushButton("保存")
+        self.save_button.setFont(self.font())
+        self.save_button.setDefault(True)
+        bottom.addWidget(self.cancel_button)
+        bottom.addWidget(self.save_button)
+        layout.addLayout(bottom)
+
+        self.cancel_button.clicked.connect(self.reject)
+        self.save_button.clicked.connect(self._save)
+
+        self._refresh()
+
+    # ------------------------------------------------------------------
+    def _refresh(self, select_row=None):
+        self.table.setRowCount(0)
+        for index, record in enumerate(self.records, 1):
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            values = (
+                str(index),
+                str(record.get("name", "")),
+                "；".join(record.get("effects", []) or []),
+                _record_divine_display(record),
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setFont(self.table_item_font)
+                item.setData(Qt.UserRole, record)
+                item.setToolTip(value)
+                self.table.setItem(row, column, item)
+        if self.records:
+            row = select_row if select_row is not None else 0
+            row = max(0, min(row, len(self.records) - 1))
+            self.table.selectRow(row)
+
+    def _selected_row(self):
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self.records):
+            return None
+        return row
+
+    def _insert_record(self, record, row):
+        row = max(0, min(row, len(self.records)))
+        self.records.insert(row, record)
+        self._refresh(row)
+
+    # ------------------------------------------------------------------
+    def _add(self):
+        dialog = PresetCardDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            row = self._selected_row()
+            self._insert_record(dialog.record, len(self.records) if row is None else row + 1)
+
+    def _edit(self):
+        row = self._selected_row()
+        if row is None:
+            return
+        dialog = PresetCardDialog(self, self.records[row])
+        if dialog.exec() == QDialog.Accepted:
+            self.records[row] = dialog.record
+            self._refresh(row)
+
+    def _copy(self):
+        row = self._selected_row()
+        if row is None:
+            return
+        self._insert_record(copy.deepcopy(self.records[row]), row + 1)
+
+    def _delete(self):
+        row = self._selected_row()
+        if row is None:
+            return
+        del self.records[row]
+        self._refresh(min(row, len(self.records) - 1))
+
+    def _move_up(self):
+        row = self._selected_row()
+        if row is None or row <= 0:
+            return
+        self.records[row - 1], self.records[row] = self.records[row], self.records[row - 1]
+        self._refresh(row - 1)
+
+    def _move_down(self):
+        row = self._selected_row()
+        if row is None or row >= len(self.records) - 1:
+            return
+        self.records[row + 1], self.records[row] = self.records[row], self.records[row + 1]
+        self._refresh(row + 1)
+
+    def _import_legacy(self):
+        try:
+            from ok.util.config import Config
+            from ok.util.file import get_relative_path, read_json_file
+
+            path = get_relative_path(Config.config_folder, "ChaosMode.json")
+            data = read_json_file(path) or {}
+            legacy = data.get("闪光优先级", []) if isinstance(data, dict) else []
+        except Exception:
+            legacy = []
+        if not legacy and hasattr(self.task, "config"):
+            legacy = self.task.config.get("闪光优先级", [])
+        records = convert_legacy_flash_priority(legacy)
+        if not records:
+            QMessageBox.information(self, "提示", "没有找到可导入的闪光优先级配置")
+            return
+        self.records.extend(records)
+        self._refresh(len(self.records) - len(records))
+        QMessageBox.information(
+            self,
+            "提示",
+            f"已导入 {len(records)} 条记录。\n"
+            "旧配置是“名称+描述”的合并文本，请检查卡牌名和效果关键字是否符合预期。",
+        )
+
+    def _save(self):
+        for record in self.records:
+            if not str(record.get("name", "")).strip():
+                QMessageBox.warning(self, "提示", "有记录没有填写卡牌名，保存失败")
+                return
+        self.accept()
+
+
+def open_preset_deck_editor(task):
+    """在配置按钮回调里打开编辑器；保存后写回任务配置。"""
+    parent = None
+    try:
+        from ok import og
+        parent = getattr(og, "main_window", None)
+    except Exception:
+        parent = None
+    dialog = PresetDeckDialog(task, parent)
+    if dialog.exec() != QDialog.Accepted:
+        return
+    task.config["预设卡组"] = dialog.records
+    try:
+        from config_io import refresh_task_config_widgets
+        refresh_task_config_widgets(task)
+    except Exception:
+        pass
