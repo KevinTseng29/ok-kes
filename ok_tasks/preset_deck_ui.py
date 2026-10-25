@@ -86,7 +86,9 @@ class DeckCodeImportDialog(QDialog):
         hint = QLabel(
             f"导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
             "成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n"
-            "联网解析会将卡组码发送到 cznmetadecks.com；部分卡组码可能暂不受支持。"
+            "联网解析会将卡组码发送到 cznmetadecks.com；部分卡组码可能暂不受支持。\n"
+            "含【记忆】等赛季卡的卡组码可能无法解析。若解析失败，请先在原 BD 中去掉赛季卡，"
+            "重新导出卡组码后再导入。"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)

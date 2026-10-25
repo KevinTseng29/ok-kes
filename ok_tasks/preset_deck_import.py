@@ -98,7 +98,10 @@ def decode_share_code(code):
         raise DeckImportError("解析服务返回了无法识别的内容，请稍后重试。") from exc
     if not value["ok"]:
         if value.get("error") == "unknownCard":
-            raise DeckImportError("解析服务暂不支持此卡组码中的部分卡牌（unknownCard）。原预设已保留，请继续手动编辑或换用其他卡组码。")
+            raise DeckImportError(
+                "解析服务暂不支持此卡组码中的部分卡牌（unknownCard），原预设已保留。\n"
+                "若含【记忆】等赛季卡，请先在原 BD 中去掉赛季卡，重新导出卡组码后再导入。"
+            )
         raise DeckImportError("卡组码解析失败，请检查是否复制完整，或确认此码受当前解析服务支持。")
     preset = value.get("preset")
     if not isinstance(preset, dict):
