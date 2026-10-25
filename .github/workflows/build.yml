@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 已存在的实验版本标签，例如 v1.4.10-alpha.1
+        description: 已存在的基础版本标签，例如 v1.4.9
         required: true
         type: string
 
@@ -40,7 +40,7 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ inputs.version || github.ref_name }}'
-          if ($version -notmatch '^v\d+\.\d+\.\d+-alpha\.\d+$') { throw '实验版必须使用 alpha 标签' }
+          if ($version -notmatch '^v\d+\.\d+\.\d+(?:-alpha\.\d+)?$') { throw '请输入有效版本标签' }
           git rev-parse --verify "refs/tags/$version"
           if ($LASTEXITCODE -ne 0) { throw '版本标签不存在' }
           "RELEASE_VERSION=$version" >> $env:GITHUB_ENV

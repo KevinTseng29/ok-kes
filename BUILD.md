@@ -6,7 +6,7 @@
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
-.\.venv\Scripts\python.exe scripts/build_portable.py --version v1.4.10-alpha.1
+.\.venv\Scripts\python.exe scripts/build_portable.py --version v1.4.9
 ```
 
 产物位于 `dist`：单文件便携 exe 和 `SHA256SUMS.txt`。用户直接双击 exe，无需安装 Python；程序会请求管理员权限，配置写入 exe 旁的 `configs` 目录。
@@ -32,6 +32,6 @@ Get-Content $report
 
 ## GitHub 发布
 
-推送 `v*-alpha.*` 注解标签后，`.github/workflows/build.yml` 会在 Windows 上运行测试、重新打包和冻结自检，全部成功后向当前仓库发布预发布 Release。仅使用当前仓库的 `GITHUB_TOKEN`，不依赖上游 CNB、Mirror酱或维护者的密钥。
+本实验包沿用上游基础版本 **v1.4.9**，不递增为 v1.4.10。可以手动触发 `.github/workflows/build.yml`，填写已经存在的 `v1.4.9` 标签；工作流会在 Windows 上运行测试、重新打包和冻结自检，再更新当前仓库的实验预发布 Release。仅使用当前仓库的 `GITHUB_TOKEN`，不依赖上游 CNB、Mirror酱或维护者的密钥。
 
-也可手动触发工作流，填写已经存在的版本标签。实验功能和限制见 [实验版发布说明](docs/releases/experimental.md)。不要将 exe、`configs`、`.venv`、`build` 或 `dist` 提交到 Git。
+完整配置包将 exe 与用户明确指定的配置共同放入 ZIP，保持 `configs` 与 exe 同级。实验功能和限制见 [实验版发布说明](docs/releases/experimental.md)。不要将 exe、个人运行配置、`.venv`、`build` 或 `dist` 提交到 Git。

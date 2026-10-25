@@ -35,6 +35,8 @@ def run():
         report["checks"].append("实验任务、预设编辑器和中文卡牌映射")
         from src.window_recovery import install_window_recovery
         install_window_recovery()
+        from src.config import version
+        report["version"] = version
         from src.globals import Globals
         assert Globals is not None
         assert (root / "icons" / "icon.png").is_file()

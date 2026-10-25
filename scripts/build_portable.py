@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", required=True, help="例如 v1.4.10-alpha.1")
+    parser.add_argument("--version", required=True, help="实验包使用基础版本，例如 v1.4.9")
     args = parser.parse_args()
     if sys.platform != "win32":
         parser.error("请在 Windows x64 和 Python 3.12 环境中打包")
