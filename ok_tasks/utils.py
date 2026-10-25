@@ -471,7 +471,7 @@ def recognize_event_options(
         for feature_box in task.find_feature(
             feature_name=feature_name,
             box=event_region,
-            threshold=0.70,
+            threshold=0.90 if feature_name == "event9" else 0.70,
         ) or []:
             center_x = (feature_box.x + feature_box.width / 2) / task.width
             center_y = (feature_box.y + feature_box.height / 2) / task.height
