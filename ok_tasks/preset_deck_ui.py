@@ -1,11 +1,12 @@
 """预设卡组编辑器（实验模式配置里的“编辑预设卡组”按钮）。
 
-界面刻意保持简单：一个列表 + 添加/编辑/复制/删除/上移/下移/从闪光优先级导入。
+界面刻意保持简单：一个列表 + 添加/编辑/复制/删除/排序及两种导入入口。
 一条记录代表一张卡，需要两张就复制一条。
 """
 import copy
+import threading
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -24,6 +25,130 @@ from PySide6.QtWidgets import (
 )
 
 from preset_deck import _normalize_record, convert_legacy_flash_priority
+from preset_deck_import import DeckImportError, convert_preset, decode_share_code, validate_code
+
+
+_IMPORT_WORKERS = set()
+
+
+class _DeckImportWorker(QObject):
+    succeeded = Signal(object)
+    failed = Signal(str)
+    completed = Signal()
+
+    def __init__(self, code, language):
+        super().__init__()
+        self.code = code
+        self.language = language
+        self.cancelled = threading.Event()
+        self.completed.connect(self._dispose)
+
+    def start(self):
+        _IMPORT_WORKERS.add(self)
+        # A daemon thread lets the application close during a pending request.
+        # All widget changes are delivered through queued Qt signals.
+        threading.Thread(target=self._run, daemon=True, name="preset-deck-import").start()
+
+    def _run(self):
+        try:
+            preset = decode_share_code(self.code)
+            if not self.cancelled.is_set():
+                result = convert_preset(preset, self.language)
+                if not self.cancelled.is_set():
+                    self.succeeded.emit(result)
+        except DeckImportError as exc:
+            if not self.cancelled.is_set():
+                self.failed.emit(str(exc))
+        except Exception:
+            if not self.cancelled.is_set():
+                self.failed.emit("卡组数据格式无法识别，导入未完成，原预设已保留。")
+        finally:
+            self.completed.emit()
+
+    @Slot()
+    def _dispose(self):
+        _IMPORT_WORKERS.discard(self)
+        self.deleteLater()
+
+
+class DeckCodeImportDialog(QDialog):
+    """Decode first; the caller only replaces records after Accepted."""
+
+    def __init__(self, language, parent=None):
+        super().__init__(parent)
+        self.language = language
+        self.result_data = None
+        self.worker = None
+        self._cancelled = False
+        self.setWindowTitle("从卡组码导入")
+        self.resize(570, 310)
+        layout = QVBoxLayout(self)
+        hint = QLabel(
+            f"导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
+            "成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n"
+            "联网解析会将卡组码发送到 cznmetadecks.com；部分卡组码可能暂不受支持。"
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.code_edit = QPlainTextEdit()
+        self.code_edit.setPlaceholderText("在此粘贴完整的官方卡组码（v6l7… 或 v6l8…）")
+        layout.addWidget(self.code_edit, 1)
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.cancel_button = QPushButton("取消")
+        self.import_button = QPushButton("导入并覆盖")
+        self.import_button.setDefault(True)
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.import_button)
+        layout.addLayout(buttons)
+        self.cancel_button.clicked.connect(self.reject)
+        self.import_button.clicked.connect(self._start_import)
+
+    def _start_import(self):
+        if self.worker is not None:
+            return
+        try:
+            code = validate_code(self.code_edit.toPlainText())
+        except DeckImportError as exc:
+            self.status_label.setText(str(exc))
+            return
+        self._cancelled = False
+        self.code_edit.setEnabled(False)
+        self.import_button.setEnabled(False)
+        self.status_label.setText("正在联网解析卡组码，请稍候…")
+        self.worker = _DeckImportWorker(code, self.language)
+        self.worker.succeeded.connect(self._succeeded)
+        self.worker.failed.connect(self._failed)
+        self.worker.start()
+
+    @Slot(object)
+    def _succeeded(self, result):
+        if self._cancelled:
+            return
+        self.result_data = result
+        self.accept()
+
+    @Slot(str)
+    def _failed(self, message):
+        if self._cancelled:
+            return
+        self.worker = None
+        self.code_edit.setEnabled(True)
+        self.import_button.setEnabled(True)
+        self.status_label.setText(message)
+
+    def reject(self):
+        self._cancelled = True
+        if self.worker is not None:
+            self.worker.cancelled.set()
+        super().reject()
+
+    def closeEvent(self, event):
+        self.reject()
+        event.accept()
 
 
 def _bump_font(widget, delta=2):
@@ -190,6 +315,7 @@ class PresetDeckDialog(QDialog):
             ("上移", self._move_up),
             ("下移", self._move_down),
             ("从闪光优先级导入", self._import_legacy),
+            ("从卡组码导入", self._import_code),
         ):
             button = QPushButton(text)
             button.setFont(self.font())
@@ -315,6 +441,19 @@ class PresetDeckDialog(QDialog):
             f"已导入 {len(records)} 条记录。\n"
             "旧配置是“名称+描述”的合并文本，请检查卡牌名和效果关键字是否符合预期。",
         )
+
+    def _import_code(self):
+        language = self.task.config.get("游戏语言", "简体中文")
+        dialog = DeckCodeImportDialog(language, self)
+        if dialog.exec() != QDialog.Accepted or dialog.result_data is None:
+            return
+        records, warnings, character = dialog.result_data
+        self.records = records
+        self._refresh(0)
+        text = f"已覆盖为{('「' + character + '」') if character else ''}卡组，共 {len(records)} 张卡。\n点击「保存」写入配置，点击「取消」放弃本次修改。"
+        if warnings:
+            text += "\n\n需要检查：\n" + "\n".join(warnings)
+        QMessageBox.information(self, "导入完成", text)
 
     def _save(self):
         for record in self.records:
