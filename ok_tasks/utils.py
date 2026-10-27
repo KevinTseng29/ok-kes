@@ -4751,6 +4751,7 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
             f"卡牌闪光事件: 检测到target卡牌，点击位置{click_position}"
         )
         _move_and_click(task, *click_position)
+        _confirm_divine_flash(task)
         return True
 
     if not chosen_card:
@@ -4758,7 +4759,29 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         task.log_info(f"随机选择「{chosen_card['name']}」")
 
     _move_and_click(task, chosen_card['x'], chosen_card['y'])
+    _confirm_divine_flash(task)
     return True
+
+
+def _confirm_divine_flash(task: TriggerTask):
+    """选了被赋予神之灵光一闪的卡，游戏会问「模糊的记忆将增加20pt，是否选择该卡牌？」：等它跳出来就按确认。
+    确认框约半秒后才出现；下一轮若先被选卡页的处理接手（例如预设卡组去点牌组按钮），
+    会点在确认框外面把它关掉，结果一直重选。"""
+    task.sleep(1)
+    task.all_texts = _simplify_texts(task.ocr())
+    if not any("是否选择该卡牌" in b.name or "模糊的记忆将增加" in b.name for b in task.all_texts):
+        return
+    confirm = next(
+        (
+            b for b in task.all_texts
+            if _clean_match(b.name, "确认") and (b.y + b.height / 2) / task.height > 0.5
+        ),
+        None,
+    )
+    if confirm is not None:
+        task.log_info("神之灵光一闪确认框：模糊的记忆会增加，点击确认")
+        task.click_box(confirm)
+        task.sleep(1)
 
 
 def handle_escape(task: TriggerTask):
