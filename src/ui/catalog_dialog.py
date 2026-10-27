@@ -8,6 +8,8 @@
   存檔仍是目錄裡的原文（簡體），執行時會先轉簡體再比對。
 - 清單裡已有的卡牌、裝備，滑鼠停在上面會顯示目錄裡的效果。
 - 卡牌、裝備選一列時，右邊顯示第一次看到時存下的截圖，方便對照 OCR 是否讀錯。
+- 國際服（游戏语言＝繁体中文）的卡牌清單改用卡牌資料庫挑選（src/ui/card_picker.py），
+  依隊伍角色篩選，別人的牌不會混進來；資料庫讀不到時才用執行時收集的目錄。
 """
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
@@ -15,7 +17,9 @@ from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTabl
 from qfluentwidgets import BodyLabel, ComboBox, LineEdit, MessageBoxBase, PushButton, SubtitleLabel, TableWidget
 
 from ok import og
-from src import catalog
+from src import card_db, catalog
+
+CARD_DB_LANG = '繁体中文'
 
 LIST_CATALOGS = {
     '任务优先级': 'event',
@@ -214,15 +218,23 @@ class CatalogDialog(MessageBoxBase):
             self.reload()
 
 
-def _effect_lookup(kind, lang, path=None, sources=()):
-    """名稱 → 顯示用的效果說明（卡牌取出現最多的那一筆）。"""
+def _effect_lookup(kind, lang, path=None, sources=(), db=None):
+    """名稱 → 顯示用的效果說明（卡牌取出現最多的那一筆；有資料庫時以資料庫為準）。"""
     lookup = {}
     if kind == 'event':
         return lookup
+    if db is not None:
+        for card in db.cards.values():
+            if card.get('name') and card.get('text'):
+                lookup.setdefault(card['name'], card_db.clean_text(card['text']))
     for _, entry in catalog.get_catalog(path).entries(kind, lang):
         if entry.get('text') and catalog.from_sources(entry, sources):
             lookup.setdefault(entry['name'], entry['text'])
     return lookup
+
+
+def _card_db_for(kind, lang):
+    return card_db.load() if kind == 'card' and lang == CARD_DB_LANG else None
 
 
 def add_keywords(dialog, keywords, effects=None):
@@ -249,8 +261,10 @@ def attach(dialog, key, config, path=None):
     if kind is None or dialog.options_available is not None:
         return False
     lang = (config.get('游戏语言') if config is not None else None) or '简体中文'
-    sources = catalog.MODE_SOURCES.get(catalog.mode_of(config), ())
-    effects = _effect_lookup(kind, lang, path, sources)
+    mode = catalog.mode_of(config)
+    sources = catalog.MODE_SOURCES.get(mode, ())
+    db = _card_db_for(kind, lang)
+    effects = _effect_lookup(kind, lang, path, sources, db)
     source_by_shown = getattr(dialog, '_source_by_shown', None) or {}
     for i in range(dialog.list_widget.count()):
         item = dialog.list_widget.item(i)
@@ -259,9 +273,15 @@ def attach(dialog, key, config, path=None):
             item.setToolTip(_tr(effects[source]))
 
     def open_picker():
-        picker = CatalogDialog(kind, lang, dialog.window(), lambda words: add_keywords(dialog, words, effects),
-                               with_text=key in NAME_AND_TEXT_KEYS, path=path, info_prefix=SLOT_KEYS.get(key),
-                               sources=sources)
+        on_add = lambda words: add_keywords(dialog, words, effects)  # noqa: E731
+        if db is not None:
+            from src.ui.card_picker import CardPickerDialog
+            picker = CardPickerDialog(db, lang, mode, config, dialog.window(), on_add,
+                                      with_text=key in NAME_AND_TEXT_KEYS, path=path)
+        else:
+            picker = CatalogDialog(kind, lang, dialog.window(), on_add,
+                                   with_text=key in NAME_AND_TEXT_KEYS, path=path, info_prefix=SLOT_KEYS.get(key),
+                                   sources=sources)
         picker.exec()
 
     button = PushButton(_tr('从目录挑选'), dialog)
