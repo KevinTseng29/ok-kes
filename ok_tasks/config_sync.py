@@ -38,13 +38,24 @@ MIN_ROUNDS = 5
 SUPPORTED_GAME_LANGUAGES = ("简体中文", "繁体中文")
 
 
+# 本 fork 上传与显示的版本加上后缀，热门配置里不会被误认为原作者发布的版本
+VERSION_SUFFIX = "-fork"
+
+
 def _get_version():
-    """从 src/config.py 读取当前版本号。"""
+    """当前版本号：安装版由框架换成发布的 tag（og.config），源码运行时是 src/config.py 的 dev。"""
+    version = ""
     try:
-        from src.config import version
-        return version
+        from ok import og
+        version = str((og.config or {}).get("version") or "").strip()
     except Exception:
-        return "dev"
+        pass
+    if not version:
+        try:
+            from src.config import version
+        except Exception:
+            version = "dev"
+    return f"{version}{VERSION_SUFFIX}"
 
 
 def _tr(text):
@@ -372,7 +383,7 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
     # 列表里每份配置都标了上传时的版本，这里显示自己的版本方便对照
     current_version = _get_version()
     version_text = f"{_tr('当前版本：')}{current_version}"
-    if current_version == "dev":
+    if current_version.startswith("dev"):
         version_text += _tr("（从源代码运行，没有正式版本号）")
     layout.addWidget(QLabel(version_text))
 
