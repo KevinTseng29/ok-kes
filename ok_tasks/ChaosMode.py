@@ -65,7 +65,6 @@ class ChaosMode(HumanizeMixin, TriggerTask):
         self.default_config['装备3号位优先级'] = ["异象石碑"]
         self.default_config['卡牌奖励优先级'] = ["梦之边境"]
         self.default_config['指定记忆卡牌'] = ""
-        self.default_config['指定记忆卡牌效果'] = ""
         self.default_config['首层刷特定闪光'] = False
         self.default_config['刷空档'] = False
         self.default_config['优先使用金币治疗'] = True

@@ -36,6 +36,9 @@ class ChaosModeExperimental(ChaosMode):
             if key == "移除卡牌列表" and "预设卡组" not in rebuilt_defaults:
                 rebuilt_defaults["预设卡组"] = []
             rebuilt_defaults[key] = value
+            # 一般模式只有合併的“指定记忆卡牌”（名字+效果），实验模式才分开填效果
+            if key == "指定记忆卡牌":
+                rebuilt_defaults["指定记忆卡牌效果"] = ""
         if "预设卡组" not in rebuilt_defaults:
             rebuilt_defaults["预设卡组"] = []
         self.default_config = rebuilt_defaults
@@ -127,6 +130,9 @@ class ChaosModeExperimental(ChaosMode):
                 )
             except Exception:
                 pass
+
+    def _check_upload_if_needed(self):
+        """实验模式的配置（预设卡组、分开的记忆效果）和一般模式不同，不上传到热门配置。"""
 
     def enable(self):
         """开启实验模式时关闭普通卡厄思、出击、剧情模式。"""

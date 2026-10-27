@@ -138,7 +138,7 @@ def _catalog_source(task: TriggerTask):
     task_class = type(task).__name__
     if task_class == "SortieMode":
         return "出击"
-    if task_class == "ChaosMode":
+    if task_class.startswith("ChaosMode"):  # 含实验模式
         return getattr(task, "_chaos_kind", "") or "卡厄思"
     return task_class
 

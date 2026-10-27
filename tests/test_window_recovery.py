@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 import threading
@@ -5,6 +6,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+# 沒有安裝框架的環境（GitHub Actions 的單元測試）整個檔案略過
+if not all(importlib.util.find_spec(m) for m in ("ok", "numpy", "win32con")):
+    raise unittest.SkipTest("需要 ok-script、numpy 與 pywin32")
 
 import numpy as np
 import win32con
