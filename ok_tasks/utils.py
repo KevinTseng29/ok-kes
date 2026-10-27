@@ -129,6 +129,23 @@ def _get_game_language(task: TriggerTask):
         return '简体中文'
 
 
+_catalog_error_logged = False
+
+
+def _record_catalog(task: TriggerTask, kind, name, text, info="", regions=()):
+    """把看到的事件任务、卡牌、装备记进目录（设置页挑选用），regions 合起来就是要存对照图的区域；
+    出错不影响流程，只记一次日志。"""
+    global _catalog_error_logged
+    try:
+        from src import catalog
+        region = catalog.union(*regions) if regions else None
+        catalog.record(task, kind, name, text, _get_game_language(task), info, region)
+    except Exception as e:
+        if not _catalog_error_logged:
+            _catalog_error_logged = True
+            task.log_info(f"记录目录失败：{e}")
+
+
 def _get_game_text(task: TriggerTask, default_text):
     """根据当前模式配置的游戏语言，返回对应服务器版本的搜索文本。"""
     game_lang = _get_game_language(task)
@@ -390,6 +407,16 @@ def _recognize_cards_by_features(
             "description_region": desc_region,
         })
     cards.sort(key=lambda card: card["feature_box"].x)
+    for card in cards:
+        box = card["feature_box"]
+        feature_region = (
+            box.x / task.width, box.y / task.height,
+            (box.x + box.width) / task.width, (box.y + box.height) / task.height,
+        )
+        _record_catalog(
+            task, "card", card["name"], card["description"], card["type"] or card["feature_type"],
+            (card["name_region"], card["type_region"], card["description_region"], feature_region),
+        )
     if cards:
         task.log_info(f"{log_prefix}卡牌识别到{len(cards)}张卡牌")
         for index, card in enumerate(cards, 1):
@@ -520,6 +547,8 @@ def recognize_event_options(
             "confidence": feature_box.confidence,
         })
 
+    for event_option in event_options:
+        _record_catalog(task, "event", "", event_option["description"])
     if event_options:
         prefix = f"{page}: " if page else ""
         task.log_info(f"{prefix}识别到{len(event_options)}个事件选项")
@@ -2376,6 +2405,12 @@ def _equipment_info(task: TriggerTask, name_region, type_region, description_reg
     canonical_name, rank = _match_equipment_name(ocr_name, priority)
     quality, quality_rgb = _equipment_quality_at(task, (0.117, 0.409))
     task.log_info(f"待选装备颜色RGB={quality_rgb}，识别品质={quality or '未知'}")
+    # 对照图：名称、类型、描述三块加上左侧的装备图标（取品质颜色的位置附近）
+    _record_catalog(
+        task, "equipment", ocr_name, description,
+        f"{slot + 1}号位 {type_text}" + (f" {quality}" if quality else ""),
+        (name_region, type_region, description_region, (0.07, 0.36, 0.17, 0.46)),
+    )
     return {
         "ocr_name": ocr_name,
         "name": canonical_name or ocr_name,

@@ -481,6 +481,18 @@ msgstr "賽季卡厄思"
 msgid "卡厄思模式在大厅时要进入哪种卡厄思。赛季卡厄思从大厅右下角的赛季入口进入。\n已经在零号系统或赛季卡厄思页面里启动时，不受此设置影响。"
 msgstr "卡厄思模式在大廳時要進入哪種卡厄思。賽季卡厄思從大廳右下角的賽季入口進入。\n已經在零號系統或賽季卡厄思頁面裡啟動時，不受此設置影響。"
 
+#: src/config.py
+msgid "目录设置"
+msgstr "目錄設置"
+
+#: src/config.py
+msgid "自动收集目录"
+msgstr "自動收集目錄"
+
+#: src/config.py
+msgid "执行时记下看到的事件任务、卡牌、装备名称与效果，在设置页的清单里可以从目录挑选。\n只存在本机的 catalog.json，不会上传。目录够用后可以关闭，避免累积识别错误的条目。"
+msgstr "執行時記下看到的事件任務、卡牌、裝備名稱與效果，在設置頁的清單裡可以從目錄挑選。\n只存在本機的 catalog.json，不會上傳。目錄夠用後可以關閉，避免累積識別錯誤的條目。"
+
 #: src/tasks/MyTriggerTask.py
 msgid "触发器会不断调用run方法"
 msgstr "觸發器會不斷調用run方法"
@@ -488,6 +500,70 @@ msgstr "觸發器會不斷調用run方法"
 #: src/tasks/MyTriggerTask.py
 msgid "一般根据frame来判断是否需要运行"
 msgstr "一般根據frame來判斷是否需要運行"
+
+#: src/ui/catalog_dialog.py
+msgid "任务内容"
+msgstr "任務內容"
+
+#: src/ui/catalog_dialog.py
+msgid "出现次数"
+msgstr "出現次數"
+
+#: src/ui/catalog_dialog.py
+msgid "名称"
+msgstr "名稱"
+
+#: src/ui/catalog_dialog.py
+msgid "效果"
+msgstr "效果"
+
+#: src/ui/catalog_dialog.py
+msgid "类型"
+msgstr "類型"
+
+#: src/ui/catalog_dialog.py
+msgid "从目录挑选"
+msgstr "從目錄挑選"
+
+#: src/ui/catalog_dialog.py
+msgid "双击或选取后按「加入」；目录是执行时自动记下的，次数越多越可靠。"
+msgstr "雙擊或選取後按「加入」；目錄是執行時自動記下的，次數越多越可靠。"
+
+#: src/ui/catalog_dialog.py
+msgid "搜索名称或效果"
+msgstr "搜索名稱或效果"
+
+#: src/ui/catalog_dialog.py
+msgid "加入"
+msgstr "加入"
+
+#: src/ui/catalog_dialog.py
+msgid "从目录删除"
+msgstr "從目錄刪除"
+
+#: src/ui/catalog_dialog.py
+msgid "删除识别错误的条目；之后再看到还会重新记下"
+msgstr "刪除識別錯誤的條目；之後再看到還會重新記下"
+
+#: src/ui/catalog_dialog.py
+msgid "关闭"
+msgstr "關閉"
+
+#: src/ui/catalog_dialog.py
+msgid "目录还没有资料：开着「自动收集目录」跑几局，看到的项目会自动记在这里。"
+msgstr "目錄還沒有資料：開著「自動收集目錄」跑幾局，看到的項目會自動記在這裡。"
+
+#: src/ui/catalog_dialog.py
+msgid "没有符合搜索的项目。"
+msgstr "沒有符合搜索的項目。"
+
+#: src/ui/catalog_dialog.py
+msgid "选一列查看截图"
+msgstr "選一列查看截圖"
+
+#: src/ui/catalog_dialog.py
+msgid "这一项没有截图"
+msgstr "這一項沒有截圖"
 
 #: src/tasks/MyOneTimeTask.py
 msgid "Configuration Demo Task"

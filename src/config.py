@@ -108,6 +108,11 @@ navigation_option = ConfigOption('导航设置', {
     },
 }, description='卡厄思模式在大厅时要进入哪种卡厄思。赛季卡厄思从大厅右下角的赛季入口进入。\n已经在零号系统或赛季卡厄思页面里启动时，不受此设置影响。')
 
+# 目录设置：全局配置。名称需和 src/catalog.py 一致
+catalog_option = ConfigOption('目录设置', {
+    '自动收集目录': True,
+}, description='执行时记下看到的事件任务、卡牌、装备名称与效果，在设置页的清单里可以从目录挑选。\n只存在本机的 catalog.json，不会上传。目录够用后可以关闭，避免累积识别错误的条目。')
+
 
 def make_bottom_right_black(frame): #可选. 某些游戏截图时遮挡UID使用
     """
@@ -147,7 +152,8 @@ config = {
     'debug': False,  # Optional, default: False
     'use_gui': True, # 目前只支持True
     'config_folder': 'configs', #最好不要修改
-    'global_configs': [key_config_option, upload_config_option, ocr_backend_option, navigation_option],
+    'global_configs': [key_config_option, upload_config_option, ocr_backend_option, navigation_option,
+                       catalog_option],
     'screenshot_processor': make_bottom_right_black, # 在截图的时候对frame进行修改, 可选
     'gui_icon': 'icons/icon.png', #窗口图标, 最好不需要修改文件名
     'wait_until_before_delay': 0,
