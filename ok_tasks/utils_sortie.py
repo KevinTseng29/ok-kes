@@ -731,12 +731,15 @@ def handle_rational_supply(task: TriggerTask):
 
 
 def handle_ether_supply(task: TriggerTask):
-    """以太补充页面: 提示用户手动补充以太。"""
+    """以太补充页面: 以太不足，关闭弹窗后停止出击模式，提示用户手动补充。
+
+    原本只关闭弹窗，回到主战员配置页又会点进入，形成「进入 → 以太不足 → 关闭」的死循环。"""
     box = find_box_at_point(task, 0.502, 0.139)
     if box and box.name == _get_game_text(task, '以太补充'):
-        task.log_info("检测到以太补充页面，请手动补充以太后再启动功能")
         _move_and_click(task, 0.347, 0.803)
         task.sleep(0.5)
+        task.log_info("以太不足：请手动补充以太后再重新启动出击模式", notify=True)
+        task.disable()
         return True
     return False
 
