@@ -14,6 +14,8 @@ ok-script 的執行器遇到任務丟出未處理的例外時，會直接停用�
   發生時先保存現場並按回首頁；recover_window 內又發生就停止任務並通知。
   點擊由 HumanizeMixin.click 呼叫 record_click 記錄；刻意重複點同一處的流程
   （再次觀測、重新合成等）要呼叫 clear_click_record。
+- avoid_event_loop／remember_event_choice：事件選了某個選項後又回到同一組選項（例如只看資訊的
+  選項），下次改選別的。這種繞圈台詞一直在變，watch 看不出來。
 
 用法：
     @guarded_run
@@ -78,6 +80,8 @@ class GuardSettings:
     # 打轉或卡住時先按回首頁；之後這麼多秒內又發生就停止任務
     recover_window: float = 600
     home_button: tuple = (0.898, 0.050)
+    # 事件選項繞圈：同一組選項在這麼多秒內又出現，上次選的就當成會繞回原處
+    event_loop_window: float = 180
 
 
 GUARD = GuardSettings()
@@ -102,6 +106,8 @@ class _GuardState:
         self.last_progress = None
         self.progress_texts = set()
         self.last_recover = None
+        # 事件選項組（排序後的描述）→（選過的描述, 最後選擇時間）
+        self.event_choices = {}
 
 
 def _state(task):
@@ -188,6 +194,46 @@ def click_loop(clicks):
     if second >= GUARD.click_pair_limit or first + second >= GUARD.click_two_targets_limit:
         return f'最近 {total} 次點擊都在兩處之間來回（{first}＋{second} 次）'
     return ''
+
+
+def _recent_event_choices(task, descriptions):
+    """這組事件選項在 event_loop_window 內選過的描述。"""
+    entry = _state(task).event_choices.get(tuple(sorted(descriptions)))
+    if not entry or time.time() - entry[1] > GUARD.event_loop_window:
+        return set()
+    return entry[0]
+
+
+def remember_event_choice(task, descriptions, chosen):
+    """記下在這組事件選項（descriptions）選了 chosen。"""
+    if not GUARD.enabled:
+        return
+    choices = _state(task).event_choices
+    now = time.time()
+    for key in [key for key, (_, at) in choices.items() if now - at > GUARD.event_loop_window]:
+        del choices[key]
+    key = tuple(sorted(descriptions))
+    chosen_before = choices[key][0] if key in choices else set()
+    choices[key] = (chosen_before | {chosen}, now)
+
+
+def avoid_event_loop(task, options, candidates, describe=lambda option: option['description']):
+    """同一組選項剛選過又回來，代表上次選的會繞回原處：從 candidates 去掉選過的。
+    candidates 是 options 過濾（拉黑等）後剩下的；去掉後沒得選就改從全部 options 挑沒選過的，
+    寧可選被拉黑的也不要再繞圈；全都選過才照舊。回傳（新的 candidates, 說明文字）。"""
+    if not GUARD.enabled:
+        return candidates, ''
+    chosen = _recent_event_choices(task, [describe(option) for option in options])
+    if not chosen:
+        return candidates, ''
+    fresh = [option for option in candidates if describe(option) not in chosen]
+    note = ''
+    if not fresh:
+        fresh = [option for option in options if describe(option) not in chosen]
+        note = '；其餘選項都被過濾，仍改選以免繞圈'
+    if not fresh:
+        return candidates, ''
+    return fresh, f'這組選項剛選過「{"、".join(sorted(chosen))}」又回到同一頁（會繞回原處），這次改選其他選項{note}'
 
 
 def _text_set(task):

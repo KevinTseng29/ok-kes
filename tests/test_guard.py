@@ -384,5 +384,59 @@ class TestCleanScreenshots(GuardTestCase):
         self.assertTrue(any('刪除最舊的 1 個檔案' in c[1] for c in self.task.kinds('info')))
 
 
+INFO = {'description': '站在席格身旁确认【未停止的记忆】资讯'}
+HEAL = {'description': '站在罗斯薇瑟身旁HP50%恢复，所有战斗员压力9减少'}
+LEAVE = {'description': '离开'}
+
+
+class TestEventLoop(GuardTestCase):
+    """選了只看資訊的選項又回到同一組選項：下次改選別的，即使別的被拉黑。"""
+
+    def names(self, options):
+        return [option['description'] for option in options]
+
+    def remember(self, options, chosen):
+        guard.remember_event_choice(self.task, self.names(options), chosen['description'])
+
+    def test_first_time_keeps_candidates(self):
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, HEAL], [INFO]), ([INFO], ''))
+
+    def test_switches_to_blacklisted_option_instead_of_looping(self):
+        # HEAL 因為拉黑「压力」被濾掉，只剩 INFO
+        self.remember([INFO, HEAL], INFO)
+        candidates, note = guard.avoid_event_loop(self.task, [HEAL, INFO], [INFO])
+        self.assertEqual(candidates, [HEAL])
+        self.assertIn('仍改選以免繞圈', note)
+
+    def test_prefers_unfiltered_options(self):
+        self.remember([INFO, HEAL, LEAVE], INFO)
+        candidates, note = guard.avoid_event_loop(self.task, [INFO, HEAL, LEAVE], [INFO, LEAVE])
+        self.assertEqual(candidates, [LEAVE])
+        self.assertNotIn('仍改選', note)
+
+    def test_all_tried_or_single_option_keeps_candidates(self):
+        self.remember([INFO, HEAL], INFO)
+        self.remember([INFO, HEAL], HEAL)
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, HEAL], [INFO]), ([INFO], ''))
+        self.remember([LEAVE], LEAVE)
+        self.assertEqual(guard.avoid_event_loop(self.task, [LEAVE], [LEAVE]), ([LEAVE], ''))
+
+    def test_other_option_sets_and_expiry(self):
+        self.remember([INFO, HEAL], INFO)
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, LEAVE], [INFO]), ([INFO], ''))
+        key = tuple(sorted(self.names([INFO, HEAL])))
+        chosen, at = self.task._guard_state.event_choices[key]
+        self.task._guard_state.event_choices[key] = (chosen, at - guard.GUARD.event_loop_window - 1)
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, HEAL], [INFO]), ([INFO], ''))
+
+    def test_reset_and_disabled(self):
+        self.remember([INFO, HEAL], INFO)
+        guard.reset(self.task)
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, HEAL], [INFO]), ([INFO], ''))
+        self.remember([INFO, HEAL], INFO)
+        guard.GUARD.enabled = False
+        self.assertEqual(guard.avoid_event_loop(self.task, [INFO, HEAL], [INFO]), ([INFO], ''))
+
+
 if __name__ == '__main__':
     unittest.main()

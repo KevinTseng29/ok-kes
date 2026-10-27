@@ -3479,6 +3479,9 @@ def handle_event_task(task: TriggerTask):
     if not tasks_info:
         task.log_info("事件任务页面的所有选项均被禁止，跳过本次选择")
         return False
+    # 这页全部可选项；选了又回到同一组选项时，用来避开会绕回原处的选项（guard.avoid_event_loop）
+    options = tasks_info
+    option_descriptions = [t["description"] for t in options]
 
     check_region = task.box_of_screen(0.396, 0.286, 0.960, 0.718)
     check_features = [
@@ -3616,14 +3619,16 @@ def handle_event_task(task: TriggerTask):
         task.sleep(2)
         return True
 
-    upper_event_task = next(
-        (task_info for task_info in tasks_info if task_info["y"] < 0.925),
-        None,
-    )
-    if upper_event_task is not None:
+    upper_tasks = [task_info for task_info in tasks_info if task_info["y"] < 0.925]
+    if upper_tasks:
+        upper_tasks, loop_note = guard.avoid_event_loop(task, options, upper_tasks)
+        if loop_note:
+            task.log_info(loop_note)
+        upper_event_task = upper_tasks[0]
         task.log_info(
             f"检测到Y坐标小于0.925的任务，立即选择: {upper_event_task['description']}"
         )
+        guard.remember_event_choice(task, option_descriptions, upper_event_task["description"])
         click_event_option(upper_event_task)
         task.sleep(1)
         return True
@@ -3670,6 +3675,10 @@ def handle_event_task(task: TriggerTask):
             filtered_tasks = tasks_info
         tasks_info = filtered_tasks
 
+    tasks_info, loop_note = guard.avoid_event_loop(task, options, tasks_info)
+    if loop_note:
+        task.log_info(loop_note)
+
     equipment_priority = []
     for slot in range(1, 4):
         equipment_priority.extend(
@@ -3714,6 +3723,7 @@ def handle_event_task(task: TriggerTask):
             f"{chosen['description']}"
         )
 
+    guard.remember_event_choice(task, option_descriptions, chosen["description"])
     click_event_option(chosen)
     task.sleep(1)
     return True
