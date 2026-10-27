@@ -4,6 +4,7 @@ from src.ui.LabelAndEditableDropDown import install as install_editable_drop_dow
 from src.ui.SponsorDialog import install_sponsor_dialog
 from src.ui.catalog_dialog import install as install_catalog_dialog
 from src.ui.translated_values import install as install_translated_values
+from src.overlay_pin import install as install_overlay_pin
 from src.window_recovery import install_window_recovery
 from src.zh_tw_ui import install as install_zh_tw_ui
 
@@ -13,6 +14,7 @@ if __name__ == '__main__':
     install_editable_drop_down()
     install_translated_values()
     install_catalog_dialog()
+    install_overlay_pin()
     install_window_recovery()
     config = config
     config['debug'] = True
