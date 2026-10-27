@@ -23,6 +23,7 @@ from utils import (
     handle_escape,
     # handle_stage_clear,
     handle_auto_stop,
+    handle_story_dialogue,
 )
 from navigation import handle_chaos_navigation
 import guard
@@ -1243,4 +1244,5 @@ PAGE_HANDLERS = [
     handle_held_cards_page,
     handle_escape,
     handle_stage_end_data_details, #关卡结束数据详情页面，低优先级
+    handle_story_dialogue, #对话页：跳过或开启自动对话，最低优先级
 ]

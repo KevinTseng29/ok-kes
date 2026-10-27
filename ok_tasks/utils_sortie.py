@@ -25,6 +25,7 @@ from utils import (
     # handle_stage_clear,
     _finish_only_first_layer,
     handle_auto_stop,
+    handle_story_dialogue,
 )
 from utils_chaos import handle_archive_target_member
 from navigation import handle_sortie_navigation
@@ -1049,4 +1050,5 @@ PAGE_HANDLERS = [
     handle_minimizemap,
     handle_held_cards_page,
     handle_escape,
+    handle_story_dialogue, #对话页：跳过或开启自动对话，最低优先级
 ]

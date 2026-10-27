@@ -1953,6 +1953,13 @@ def handle_settlement(task: TriggerTask):
     return False
 
 
+def handle_story_dialogue(task: TriggerTask):
+    """事件或剧情对话：有跳过按钮就跳过，自动对话没开就点开（沿用剧情模式的处理），
+    避免停在对话页不前进。"""
+    from utils_story import handle_auto_chat, handle_skip_story
+    return handle_skip_story(task) or handle_auto_chat(task)
+
+
 def handle_skip(task: TriggerTask):
     """"跳过"按钮。"""
     box = find_box_at_point(task, 0.941, 0.917)
