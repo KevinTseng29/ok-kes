@@ -2103,10 +2103,11 @@ def handle_settlement(task: TriggerTask):
 
 
 def handle_story_dialogue(task: TriggerTask):
-    """事件或剧情对话：有跳过按钮就跳过，自动对话没开就点开（沿用剧情模式的处理），
-    避免停在对话页不前进。"""
+    """事件或剧情对话：有跳过按钮就跳过，自动对话没开就点开（沿用剧情模式的处理）；
+    地图上没有按钮的对话框则点台词推进（dialogue.py），避免停在对话页不前进。"""
     from utils_story import handle_auto_chat, handle_skip_story
-    return handle_skip_story(task) or handle_auto_chat(task)
+    from dialogue import advance_dialogue_box
+    return handle_skip_story(task) or handle_auto_chat(task) or advance_dialogue_box(task)
 
 
 def handle_skip(task: TriggerTask):
