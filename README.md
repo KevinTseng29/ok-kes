@@ -25,6 +25,10 @@
 
 ### [English Readme](README_en.md) | 中文说明
 
+> **本分支为实验版**：新增预设卡组、官方卡组码联网导入与窗口恢复等待。
+> 下载可直接运行的 exe：[实验版 Releases](https://github.com/liuzihua699/ok-kes/releases)。
+> 功能与限制见 [实验版说明](docs/releases/experimental.md)，源码打包见 [BUILD.md](BUILD.md)。
+
 > 📖 **第一次使用？请先阅读：[完整使用文档](docs/zh-CN/usage-guide.md)**
 
 ---
