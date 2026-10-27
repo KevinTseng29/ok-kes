@@ -98,6 +98,19 @@ class TestCatalogDialog(unittest.TestCase):
         dialog.confirm()
         self.assertEqual(result, [['剑幕', '剑之雨']])
 
+    def test_equipment_picker_filters_by_slot(self):
+        from src.ui.catalog_dialog import CatalogDialog, SLOT_KEYS
+        self.catalog.record('equipment', '蚀化臂铠', '攻击力+10', '繁体中文', '1号位 武器 传说')
+        self.catalog.record('equipment', '拷问工具箱', '防御+5', '繁体中文', '2号位 防具')
+        self.assertEqual(SLOT_KEYS['装备1号位优先级'], '1号位')
+        picker = CatalogDialog('equipment', '繁体中文', self.window, lambda words: None, path=self.path,
+                               info_prefix='1号位')
+        self.assertEqual([entry['name'] for _, entry in picker.rows], ['蚀化臂铠'])
+        empty = CatalogDialog('equipment', '繁体中文', self.window, lambda words: None, path=self.path,
+                              info_prefix='3号位')
+        self.assertEqual(empty.table.rowCount(), 0)
+        self.assertIn('目录还没有资料', empty.empty_label.text())
+
     def test_event_picker_inserts_task_text(self):
         picker, added = self.picker(kind='event')
         self.assertIsNone(picker.preview)

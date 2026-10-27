@@ -1,7 +1,8 @@
 """設定頁清單的「從目錄挑選」：從自動收集的目錄（src/catalog.py）搜尋事件任務、卡牌、裝備，
 看得到效果，選取後加進優先級或拉黑清單。
 
-- 只在 LIST_CATALOGS 列出的清單編輯視窗出現，選項依該模式的「游戏语言」分開。
+- 只在 LIST_CATALOGS 列出的清單編輯視窗出現，選項依該模式的「游戏语言」分開；
+  裝備 N 號位優先級只列出該號位的裝備。
 - 加入的是名稱（事件任務是任務內容；閃光優先級是名稱＋效果，可再刪短）。顯示照介面語言，
   存檔仍是目錄裡的原文（簡體），執行時會先轉簡體再比對。
 - 清單裡已有的卡牌、裝備，滑鼠停在上面會顯示目錄裡的效果。
@@ -33,6 +34,8 @@ LIST_CATALOGS = {
 }
 # 這些清單比對的是「卡名＋效果」，加入時一併帶上效果
 NAME_AND_TEXT_KEYS = {'闪光优先级'}
+# 裝備清單只列該號位的裝備（目錄的 info 以「N号位」開頭）
+SLOT_KEYS = {f'装备{slot}号位优先级': f'{slot}号位' for slot in (1, 2, 3)}
 PREVIEW_SIZE = (260, 380)
 
 
@@ -56,13 +59,17 @@ def _columns(kind):
 
 class CatalogDialog(MessageBoxBase):
 
-    def __init__(self, kind, lang, parent, on_add, with_text=False, path=None):
+    def __init__(self, kind, lang, parent, on_add, with_text=False, path=None, info_prefix=None):
         super().__init__(parent)
         self.kind, self.lang, self.on_add, self.with_text = kind, lang, on_add, with_text
+        self.info_prefix = info_prefix
         self.catalog = catalog.get_catalog(path)
         self.rows = []
 
-        self.viewLayout.addWidget(SubtitleLabel(f"{_tr('从目录挑选')}：{_tr(catalog.KIND_NAMES[kind])}", self))
+        title = f"{_tr('从目录挑选')}：{_tr(catalog.KIND_NAMES[kind])}"
+        if info_prefix:
+            title += f"（{_tr(info_prefix)}）"
+        self.viewLayout.addWidget(SubtitleLabel(title, self))
         self.hint = BodyLabel(_tr('双击或选取后按「加入」；目录是执行时自动记下的，次数越多越可靠。'), self)
         self.hint.setWordWrap(True)
         self.viewLayout.addWidget(self.hint)
@@ -116,10 +123,15 @@ class CatalogDialog(MessageBoxBase):
         self.widget.setMinimumSize(1000 if self.preview else 900, 620)
         self.reload()
 
+    def all_entries(self):
+        entries = self.catalog.entries(self.kind, self.lang)
+        if self.info_prefix:
+            entries = [(key, entry) for key, entry in entries if entry.get('info', '').startswith(self.info_prefix)]
+        return entries
+
     def reload(self):
         query = self.search.text()
-        self.rows = [(key, entry) for key, entry in self.catalog.entries(self.kind, self.lang)
-                     if catalog.matches(entry, query, _tr)]
+        self.rows = [(key, entry) for key, entry in self.all_entries() if catalog.matches(entry, query, _tr)]
         self.table.setRowCount(len(self.rows))
         for row, (key, entry) in enumerate(self.rows):
             if self.kind == 'event':
@@ -131,7 +143,7 @@ class CatalogDialog(MessageBoxBase):
                 item.setToolTip(text)
                 self.table.setItem(row, column, item)
         self.table.resizeRowsToContents()
-        total = len(self.catalog.entries(self.kind, self.lang))
+        total = len(self.all_entries())
         if total == 0:
             self.empty_label.setText(_tr('目录还没有资料：开着「自动收集目录」跑几局，看到的项目会自动记在这里。'))
         elif not self.rows:
@@ -214,7 +226,7 @@ def attach(dialog, key, config, path=None):
 
     def open_picker():
         picker = CatalogDialog(kind, lang, dialog.window(), lambda words: add_keywords(dialog, words, effects),
-                               with_text=key in NAME_AND_TEXT_KEYS, path=path)
+                               with_text=key in NAME_AND_TEXT_KEYS, path=path, info_prefix=SLOT_KEYS.get(key))
         picker.exec()
 
     button = PushButton(_tr('从目录挑选'), dialog)
