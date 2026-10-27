@@ -27,6 +27,7 @@ update.bat
 click_screenshots/
 test_scripts/
 screenshots/
+error_scenes/
 thread_dumps.txt
 *.so
 *.bat

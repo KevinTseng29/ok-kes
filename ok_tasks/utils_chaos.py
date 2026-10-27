@@ -14,7 +14,7 @@ from utils import (
     handle_event_task, handle_route_selection, handle_obtain_reward,
     handle_leave, handle_next_step, handle_select, handle_rest, handle_view_original, handle_weakness_info,
     handle_close_button,
-    handle_card_assign, handle_non_battle_page, handle_minimizemap, handle_held_cards_page, handle_craft,
+    handle_card_assign, handle_minimizemap, handle_held_cards_page, handle_craft,
     handle_remove, handle_three_choice_card_remove, handle_flash, handle_reflash, handle_grant_flash, handle_copy, handle_convert,
     handle_equipment_recast,
     handle_stuck_log, handle_expedition_result,
@@ -24,6 +24,7 @@ from utils import (
     # handle_stage_clear,
     handle_auto_stop,
 )
+from navigation import handle_chaos_navigation
 
 import re
 import random
@@ -1197,7 +1198,7 @@ PAGE_HANDLERS = [
 
     handle_minimizemap,
     handle_weakness_info,
-    handle_non_battle_page,
+    handle_chaos_navigation, #大厅→卡厄思→零号系统；误入其他功能页时回大厅
     handle_battle_crash,
     handle_battle_auto_check,
     handle_settlement,

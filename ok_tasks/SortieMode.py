@@ -1,4 +1,5 @@
 from ok import TriggerTask, og
+from guard import guarded_run
 from humanize import HumanizeMixin
 
 import utils_sortie
@@ -107,6 +108,7 @@ class SortieMode(HumanizeMixin, TriggerTask):
     def _show_hot_configs(self):
         show_hot_configs_dialog(self, "sortie")
 
+    @guarded_run
     def run(self):
         self.all_texts = _simplify_texts(self.ocr())
         for handle_page in utils_sortie.PAGE_HANDLERS:

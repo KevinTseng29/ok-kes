@@ -1,4 +1,5 @@
 from ok import TriggerTask, og
+from guard import guarded_run
 from humanize import HumanizeMixin
 
 import utils_chaos
@@ -144,6 +145,7 @@ class ChaosMode(HumanizeMixin, TriggerTask):
     def _show_hot_configs(self):
         show_hot_configs_dialog(self, "chaos")
 
+    @guarded_run
     def run(self):
         # 每帧执行一次 OCR 并转简体, 供各页面处理函数复用
         self.all_texts = _simplify_texts(self.ocr())

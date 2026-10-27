@@ -9,6 +9,8 @@ import os
 import numpy as np
 from opencc import OpenCC
 
+import guard
+
 _jp2t = OpenCC('jp2t')  # 日文新字体转繁体
 _t2s = OpenCC('t2s')  # 繁体转简体
 
@@ -1712,9 +1714,14 @@ def is_frame_stuck(task: TriggerTask, stuck_threshold_seconds=30, change_thresho
 def handle_stuck_log(task: TriggerTask):
     """画面卡住超过10秒时依次处理关闭页、特殊怪物、卡牌或未知页面。"""
     if not is_frame_stuck(task, stuck_threshold_seconds=10):
+        task._stuck_scene_saved = False
         return False
 
     stuck_seconds = int(time.time() - task._last_change_time)
+    if not getattr(task, '_stuck_scene_saved', False):
+        # 每次卡住只保存一次现场（最近几轮截图与日志），供事后排查
+        guard.save_scene(task, 'stuck', f'画面卡住已持续{stuck_seconds}秒')
+        task._stuck_scene_saved = True
     close_page = task.find_one(
         feature_name="close_page",
         box=task.box_of_screen(0.921, 0.003, 0.998, 0.100),
@@ -4476,25 +4483,6 @@ def handle_minimizemap(task: TriggerTask):
     if boxes:
         task.log_info("检测到地图页面，点击关闭小地图")
         task.click_box(boxes[0])
-        return True
-    return False
-
-def handle_non_battle_page(task: TriggerTask):
-    """非出击/卡厄思页面: 检测到故事/营救/方舟城市时自动停止当前模式，优先级最高。"""
-    box = find_box_at_point(task, 0.887, 0.160)
-    if box and box.name == "故事":
-        task.log_info("检测到故事页面，停止当前模式")
-        task.disable()
-        return True
-    box = find_box_at_point(task, 0.101, 0.046)
-    if box and box.name == "营救":
-        task.log_info("检测到营救页面，停止当前模式")
-        task.disable()
-        return True
-    box = find_box_at_point(task, 0.124, 0.049)
-    if box and box.name == "方舟城市":
-        task.log_info("检测到方舟城市页面，停止当前模式")
-        task.disable()
         return True
     return False
 

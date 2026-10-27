@@ -1,4 +1,5 @@
 from ok import TriggerTask, og
+from guard import guarded_run
 from humanize import HumanizeMixin
 
 import utils_story
@@ -28,6 +29,7 @@ class StoryMode(HumanizeMixin, TriggerTask):
             chaos.disable()
         super().enable()
 
+    @guarded_run
     def run(self):
         # 每帧执行一次 OCR 并转简体, 供各页面处理函数复用
         self.all_texts = _simplify_texts(self.ocr())

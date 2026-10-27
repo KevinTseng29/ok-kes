@@ -14,7 +14,7 @@ from utils import (
     handle_event_task, handle_route_selection, handle_obtain_reward,
     handle_leave, handle_next_step, handle_select, handle_view_original,
     handle_close_button,
-    handle_card_assign, handle_non_battle_page,
+    handle_card_assign,
     handle_remove, handle_three_choice_card_remove, handle_flash, handle_reflash, handle_grant_flash, handle_copy, handle_convert, handle_equipment_recast, handle_weakness_info, handle_minimizemap,
     handle_held_cards_page,
     handle_stuck_log, is_button_active, _clean_match,
@@ -27,6 +27,7 @@ from utils import (
     handle_auto_stop,
 )
 from utils_chaos import handle_archive_target_member
+from navigation import handle_sortie_navigation
 
 import re
 import random
@@ -1006,7 +1007,7 @@ PAGE_HANDLERS = [
 
     handle_equipment_recast, #装备重铸按钮
 
-    handle_non_battle_page,
+    handle_sortie_navigation, #大厅→出击；误入其他功能页时回大厅
     handle_battle_crash,
     handle_discard_hand_card,
     handle_battle_hand_select,
