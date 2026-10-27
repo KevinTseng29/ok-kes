@@ -221,6 +221,14 @@ msgstr "按列表從上到下匹配。一條記錄代表一張卡，需要兩張
 msgid "修改"
 msgstr "修改"
 
+#: ok_tasks/ChaosModeExperimental.py
+msgid "错误"
+msgstr "錯誤"
+
+#: ok_tasks/ChaosModeExperimental.py
+msgid "打开预设卡组编辑器失败：{error}"
+msgstr "打開預設卡組編輯器失敗：{error}"
+
 #: ok_tasks/GetMengbian.py
 msgid "刷梦边"
 msgstr "刷夢邊"
@@ -404,6 +412,170 @@ msgstr "導入失敗"
 #: ok_tasks/config_sync.py
 msgid "配置解析失败，请重试。"
 msgstr "配置解析失敗，請重試。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "从卡组码导入"
+msgstr "從卡組碼導入"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n能识别的字段会尽量导入，缺失字段在表格「导入提示」列标出，可双击补填。\n卡组码在本机离线解析，不会联网。卡组码里无法识别的部分会在导入结果中列出。"
+msgstr "導入文本語言：{language}（取自本模式的「遊戲語言」配置）。\n成功後覆蓋當前窗口的全部預設卡牌，點擊主窗口「保存」後生效。\n能識別的字段會盡量導入，缺失字段在表格「導入提示」列標出，可雙擊補填。\n卡組碼在本機離線解析，不會聯網。卡組碼裡無法識別的部分會在導入結果中列出。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "在此粘贴完整的官方卡组码（v6l7… 或 v6l8…）"
+msgstr "在此粘貼完整的官方卡組碼（v6l7… 或 v6l8…）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入并覆盖"
+msgstr "導入並覆蓋"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "正在解析卡组码，请稍候…"
+msgstr "正在解析卡組碼，請稍候…"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "不判断"
+msgstr "不判斷"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "（拒绝神闪）"
+msgstr "（拒絕神閃）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "编辑预设卡牌"
+msgstr "編輯預設卡牌"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入待补充："
+msgstr "導入待補充："
+
+#: ok_tasks/preset_deck_ui.py
+msgid "编辑后点击「确定」将清除此卡的导入提示。"
+msgstr "編輯後點擊「確定」將清除此卡的導入提示。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "卡牌名（必填，填卡面上能认出的名字即可）"
+msgstr "卡牌名（必填，填卡面上能認出的名字即可）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "例如：光之剑路"
+msgstr "例如：光之劍路"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "卡牌效果（一行一个关键字，任意一行命中即可）"
+msgstr "卡牌效果（一行一個關鍵字，任意一行命中即可）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "例如：造成360%的伤害\n本回合叠加凝聚"
+msgstr "例如：造成360%的傷害\n本回合疊加凝聚"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "神闪效果（神闪图标后面那行文本，一行一个关键字）"
+msgstr "神閃效果（神閃圖標後面那行文本，一行一個關鍵字）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "例如：此卡牌费用减少1\n生成2张剑穗"
+msgstr "例如：此卡牌費用減少1\n生成2張劍穗"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "拒绝神闪（这张卡出现神闪形态时不选它）"
+msgstr "拒絕神閃（這張卡出現神閃形態時不選它）"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "确定"
+msgstr "確定"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "提示"
+msgstr "提示"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "卡牌名不能为空"
+msgstr "卡牌名不能為空"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "预设卡组（从上到下匹配；一条记录 = 一张卡，需要多张请用「复制」）\n匹配顺序：卡牌名 → 卡牌效果 → 神闪效果；神闪形态可以在编辑里单独拒绝。"
+msgstr "預設卡組（從上到下匹配；一條記錄 = 一張卡，需要多張請用「複製」）\n匹配順序：卡牌名 → 卡牌效果 → 神閃效果；神閃形態可以在編輯裡單獨拒絕。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "顺序"
+msgstr "順序"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "卡牌名"
+msgstr "卡牌名"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "卡牌效果"
+msgstr "卡牌效果"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "神闪效果"
+msgstr "神閃效果"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入提示"
+msgstr "導入提示"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "添加"
+msgstr "添加"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "编辑"
+msgstr "編輯"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "复制"
+msgstr "複製"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "删除"
+msgstr "刪除"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "上移"
+msgstr "上移"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "下移"
+msgstr "下移"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "从闪光优先级导入"
+msgstr "從閃光優先級導入"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "保存"
+msgstr "保存"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "没有找到可导入的闪光优先级配置"
+msgstr "沒有找到可導入的閃光優先級配置"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "已导入 {count} 条记录。\n旧配置是“名称+描述”的合并文本，请检查卡牌名和效果关键字是否符合预期。"
+msgstr "已導入 {count} 條記錄。\n舊配置是“名稱+描述”的合併文本，請檢查卡牌名和效果關鍵字是否符合預期。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "已覆盖为{character}卡组，共 {count} 张卡。\n点击「保存」写入配置，点击「取消」放弃本次修改。"
+msgstr "已覆蓋為{character}卡組，共 {count} 張卡。\n點擊「保存」寫入配置，點擊「取消」放棄本次修改。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "已保留可识别的数据，{count} 张卡有字段需要补充。\n查看表格「导入提示」列，双击对应卡牌编辑。\n跳过的异常记录等信息可展开「详细信息」查看。"
+msgstr "已保留可識別的數據，{count} 張卡有字段需要補充。\n查看錶格「導入提示」列，雙擊對應卡牌編輯。\n跳過的異常記錄等信息可展開「詳細信息」查看。"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入完成，请检查"
+msgstr "導入完成，請檢查"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "导入完成"
+msgstr "導入完成"
+
+#: ok_tasks/preset_deck_ui.py
+msgid "有记录没有填写卡牌名，保存失败"
+msgstr "有記錄沒有填寫卡牌名，保存失敗"
 
 #: ok_tasks/utils.py
 msgid "当前信用点"

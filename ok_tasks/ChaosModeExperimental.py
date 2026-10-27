@@ -124,9 +124,10 @@ class ChaosModeExperimental(ChaosMode):
             self.log_error("打开预设卡组编辑器失败", exc)
             try:
                 from PySide6.QtWidgets import QMessageBox
+                from config_sync import _tr
 
                 QMessageBox.warning(
-                    None, "错误", f"打开预设卡组编辑器失败：{exc}"
+                    None, _tr("错误"), _tr("打开预设卡组编辑器失败：{error}").format(error=exc)
                 )
             except Exception:
                 pass

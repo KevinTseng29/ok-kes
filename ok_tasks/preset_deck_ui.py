@@ -32,6 +32,17 @@ from preset_deck_import import DeckImportError, convert_preset, decode_share_cod
 _IMPORT_WORKERS = set()
 
 
+def _tr(text):
+    """界面文字按界面语言显示（繁体界面会转成繁体）；卡牌名、效果等配置数据不经过这里。"""
+    if not text:
+        return text
+    try:
+        from ok import og
+        return og.app.tr(text)
+    except Exception:
+        return text
+
+
 class _DeckImportWorker(QObject):
     succeeded = Signal(object)
     failed = Signal(str)
@@ -81,27 +92,27 @@ class DeckCodeImportDialog(QDialog):
         self.result_data = None
         self.worker = None
         self._cancelled = False
-        self.setWindowTitle("从卡组码导入")
+        self.setWindowTitle(_tr("从卡组码导入"))
         self.resize(570, 310)
         layout = QVBoxLayout(self)
-        hint = QLabel(
-            f"导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
+        hint = QLabel(_tr(
+            "导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
             "成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n"
             "能识别的字段会尽量导入，缺失字段在表格「导入提示」列标出，可双击补填。\n"
             "卡组码在本机离线解析，不会联网。卡组码里无法识别的部分会在导入结果中列出。"
-        )
+        ).format(language=_tr(language)))
         hint.setWordWrap(True)
         layout.addWidget(hint)
         self.code_edit = QPlainTextEdit()
-        self.code_edit.setPlaceholderText("在此粘贴完整的官方卡组码（v6l7… 或 v6l8…）")
+        self.code_edit.setPlaceholderText(_tr("在此粘贴完整的官方卡组码（v6l7… 或 v6l8…）"))
         layout.addWidget(self.code_edit, 1)
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self.cancel_button = QPushButton("取消")
-        self.import_button = QPushButton("导入并覆盖")
+        self.cancel_button = QPushButton(_tr("取消"))
+        self.import_button = QPushButton(_tr("导入并覆盖"))
         self.import_button.setDefault(True)
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.import_button)
@@ -115,12 +126,12 @@ class DeckCodeImportDialog(QDialog):
         try:
             code = validate_code(self.code_edit.toPlainText())
         except DeckImportError as exc:
-            self.status_label.setText(str(exc))
+            self.status_label.setText(_tr(str(exc)))
             return
         self._cancelled = False
         self.code_edit.setEnabled(False)
         self.import_button.setEnabled(False)
-        self.status_label.setText("正在解析卡组码，请稍候…")
+        self.status_label.setText(_tr("正在解析卡组码，请稍候…"))
         self.worker = _DeckImportWorker(code, self.language)
         self.worker.succeeded.connect(self._succeeded)
         self.worker.failed.connect(self._failed)
@@ -140,7 +151,7 @@ class DeckCodeImportDialog(QDialog):
         self.worker = None
         self.code_edit.setEnabled(True)
         self.import_button.setEnabled(True)
-        self.status_label.setText(message)
+        self.status_label.setText(_tr(message))
 
     def reject(self):
         self._cancelled = True
@@ -179,9 +190,9 @@ def _mm_to_px(mm):
 
 def _record_divine_display(record):
     texts = record.get("divine_text", []) or []
-    text = "；".join(texts) if texts else "不判断"
+    text = "；".join(texts) if texts else _tr("不判断")
     if record.get("reject_divine"):
-        text += "（拒绝神闪）"
+        text += _tr("（拒绝神闪）")
     return text
 
 
@@ -191,7 +202,7 @@ class PresetCardDialog(QDialog):
     def __init__(self, parent=None, record=None):
         super().__init__(parent)
         _bump_font(self)
-        self.setWindowTitle("编辑预设卡牌")
+        self.setWindowTitle(_tr("编辑预设卡牌"))
         self.resize(480, 540)
         self.record = copy.deepcopy(record) if record else {
             "name": "",
@@ -202,34 +213,37 @@ class PresetCardDialog(QDialog):
 
         layout = QVBoxLayout(self)
         if self.record.get("import_notes"):
-            notes_label = QLabel("导入待补充：\n" + "\n".join(self.record["import_notes"]) + "\n编辑后点击「确定」将清除此卡的导入提示。")
+            notes_label = QLabel(
+                _tr("导入待补充：") + "\n" + _tr("\n".join(self.record["import_notes"])) + "\n"
+                + _tr("编辑后点击「确定」将清除此卡的导入提示。")
+            )
             notes_label.setWordWrap(True)
             layout.addWidget(notes_label)
-        layout.addWidget(QLabel("卡牌名（必填，填卡面上能认出的名字即可）"))
+        layout.addWidget(QLabel(_tr("卡牌名（必填，填卡面上能认出的名字即可）")))
         self.name_edit = QLineEdit(str(self.record.get("name", "")))
-        self.name_edit.setPlaceholderText("例如：光之剑路")
+        self.name_edit.setPlaceholderText(_tr("例如：光之剑路"))
         layout.addWidget(self.name_edit)
 
-        layout.addWidget(QLabel("卡牌效果（一行一个关键字，任意一行命中即可）"))
+        layout.addWidget(QLabel(_tr("卡牌效果（一行一个关键字，任意一行命中即可）")))
         self.effect_edit = QPlainTextEdit()
-        self.effect_edit.setPlaceholderText("例如：造成360%的伤害\n本回合叠加凝聚")
+        self.effect_edit.setPlaceholderText(_tr("例如：造成360%的伤害\n本回合叠加凝聚"))
         self.effect_edit.setPlainText("\n".join(self.record.get("effects", []) or []))
         layout.addWidget(self.effect_edit, 1)
 
-        layout.addWidget(QLabel("神闪效果（神闪图标后面那行文本，一行一个关键字）"))
+        layout.addWidget(QLabel(_tr("神闪效果（神闪图标后面那行文本，一行一个关键字）")))
         self.divine_edit = QPlainTextEdit()
-        self.divine_edit.setPlaceholderText("例如：此卡牌费用减少1\n生成2张剑穗")
+        self.divine_edit.setPlaceholderText(_tr("例如：此卡牌费用减少1\n生成2张剑穗"))
         self.divine_edit.setPlainText("\n".join(self.record.get("divine_text", []) or []))
         layout.addWidget(self.divine_edit, 1)
 
-        self.reject_check = QCheckBox("拒绝神闪（这张卡出现神闪形态时不选它）")
+        self.reject_check = QCheckBox(_tr("拒绝神闪（这张卡出现神闪形态时不选它）"))
         self.reject_check.setChecked(bool(self.record.get("reject_divine")))
         layout.addWidget(self.reject_check)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self.cancel_button = QPushButton("取消")
-        self.ok_button = QPushButton("确定")
+        self.cancel_button = QPushButton(_tr("取消"))
+        self.ok_button = QPushButton(_tr("确定"))
         self.ok_button.setDefault(True)
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.ok_button)
@@ -241,7 +255,7 @@ class PresetCardDialog(QDialog):
     def _accept(self):
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "提示", "卡牌名不能为空")
+            QMessageBox.warning(self, _tr("提示"), _tr("卡牌名不能为空"))
             return
         self.record = {
             "name": name,
@@ -275,14 +289,14 @@ class PresetDeckDialog(QDialog):
             ]
         else:
             self.records = []
-        self.setWindowTitle("预设卡组")
+        self.setWindowTitle(_tr("预设卡组"))
         self.resize(980, 620)
 
         layout = QVBoxLayout(self)
-        title = QLabel(
+        title = QLabel(_tr(
             "预设卡组（从上到下匹配；一条记录 = 一张卡，需要多张请用「复制」）\n"
             "匹配顺序：卡牌名 → 卡牌效果 → 神闪效果；神闪形态可以在编辑里单独拒绝。"
-        )
+        ))
         title.setWordWrap(True)
         title.setFont(self.font())
         layout.addWidget(title)
@@ -296,7 +310,9 @@ class PresetDeckDialog(QDialog):
         self.table.verticalHeader().setDefaultSectionSize(
             self.table.fontMetrics().height() + 8 + _mm_to_px(0.5)
         )
-        self.table.setHorizontalHeaderLabels(["顺序", "卡牌名", "卡牌效果", "神闪效果", "导入提示"])
+        self.table.setHorizontalHeaderLabels(
+            [_tr("顺序"), _tr("卡牌名"), _tr("卡牌效果"), _tr("神闪效果"), _tr("导入提示")]
+        )
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -316,14 +332,14 @@ class PresetDeckDialog(QDialog):
 
         toolbar = QHBoxLayout()
         for text, handler in (
-            ("添加", self._add),
-            ("编辑", self._edit),
-            ("复制", self._copy),
-            ("删除", self._delete),
-            ("上移", self._move_up),
-            ("下移", self._move_down),
-            ("从闪光优先级导入", self._import_legacy),
-            ("从卡组码导入", self._import_code),
+            (_tr("添加"), self._add),
+            (_tr("编辑"), self._edit),
+            (_tr("复制"), self._copy),
+            (_tr("删除"), self._delete),
+            (_tr("上移"), self._move_up),
+            (_tr("下移"), self._move_down),
+            (_tr("从闪光优先级导入"), self._import_legacy),
+            (_tr("从卡组码导入"), self._import_code),
         ):
             button = QPushButton(text)
             button.setFont(self.font())
@@ -334,9 +350,9 @@ class PresetDeckDialog(QDialog):
 
         bottom = QHBoxLayout()
         bottom.addStretch(1)
-        self.cancel_button = QPushButton("取消")
+        self.cancel_button = QPushButton(_tr("取消"))
         self.cancel_button.setFont(self.font())
-        self.save_button = QPushButton("保存")
+        self.save_button = QPushButton(_tr("保存"))
         self.save_button.setFont(self.font())
         self.save_button.setDefault(True)
         bottom.addWidget(self.cancel_button)
@@ -359,7 +375,7 @@ class PresetDeckDialog(QDialog):
                 str(record.get("name", "")),
                 "；".join(record.get("effects", []) or []),
                 _record_divine_display(record),
-                "；".join(record.get("import_notes", []) or []),
+                _tr("；".join(record.get("import_notes", []) or [])),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -442,15 +458,17 @@ class PresetDeckDialog(QDialog):
             legacy = self.task.config.get("闪光优先级", [])
         records = convert_legacy_flash_priority(legacy)
         if not records:
-            QMessageBox.information(self, "提示", "没有找到可导入的闪光优先级配置")
+            QMessageBox.information(self, _tr("提示"), _tr("没有找到可导入的闪光优先级配置"))
             return
         self.records.extend(records)
         self._refresh(len(self.records) - len(records))
         QMessageBox.information(
             self,
-            "提示",
-            f"已导入 {len(records)} 条记录。\n"
-            "旧配置是“名称+描述”的合并文本，请检查卡牌名和效果关键字是否符合预期。",
+            _tr("提示"),
+            _tr(
+                "已导入 {count} 条记录。\n"
+                "旧配置是“名称+描述”的合并文本，请检查卡牌名和效果关键字是否符合预期。"
+            ).format(count=len(records)),
         )
 
     def _import_code(self):
@@ -461,20 +479,25 @@ class PresetDeckDialog(QDialog):
         records, warnings, character = dialog.result_data
         self.records = records
         self._refresh(0)
-        text = f"已覆盖为{('「' + character + '」') if character else ''}卡组，共 {len(records)} 张卡。\n点击「保存」写入配置，点击「取消」放弃本次修改。"
+        text = _tr(
+            "已覆盖为{character}卡组，共 {count} 张卡。\n点击「保存」写入配置，点击「取消」放弃本次修改。"
+        ).format(character=f"「{character}」" if character else "", count=len(records))
         if warnings:
             count = sum(bool(record.get("import_notes")) for record in records)
-            text += f"\n\n已保留可识别的数据，{count} 张卡有字段需要补充。\n查看表格「导入提示」列，双击对应卡牌编辑。\n跳过的异常记录等信息可展开「详细信息」查看。"
-            message = QMessageBox(QMessageBox.Information, "导入完成，请检查", text, QMessageBox.Ok, self)
-            message.setDetailedText("\n".join(warnings))
+            text += "\n\n" + _tr(
+                "已保留可识别的数据，{count} 张卡有字段需要补充。\n查看表格「导入提示」列，双击对应卡牌编辑。\n"
+                "跳过的异常记录等信息可展开「详细信息」查看。"
+            ).format(count=count)
+            message = QMessageBox(QMessageBox.Information, _tr("导入完成，请检查"), text, QMessageBox.Ok, self)
+            message.setDetailedText(_tr("\n".join(warnings)))
             message.exec()
         else:
-            QMessageBox.information(self, "导入完成", text)
+            QMessageBox.information(self, _tr("导入完成"), text)
 
     def _save(self):
         for record in self.records:
             if not str(record.get("name", "")).strip():
-                QMessageBox.warning(self, "提示", "有记录没有填写卡牌名，保存失败")
+                QMessageBox.warning(self, _tr("提示"), _tr("有记录没有填写卡牌名，保存失败"))
                 return
         self.accept()
 
