@@ -47,6 +47,15 @@ def _get_version():
         return "dev"
 
 
+def _tr(text):
+    """对话框文字按界面语言显示（繁体界面会转成繁体）。"""
+    try:
+        from ok import og
+        return og.app.tr(text)
+    except Exception:
+        return text
+
+
 def _get_user_hash() -> str:
     """生成匿名用户标识：基于机器特征的一次性哈希。
     
@@ -292,9 +301,9 @@ def check_upload_disabled_and_warn(task: TriggerTask) -> bool:
     if not upload_enabled:
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(
-            None, "热门配置不可用",
-            "请先在左下角设置页中开启「配置上传」功能，才能使用热门配置。\n\n"
-            "开启后，您可以浏览和下载其他高胜率玩家分享的配置。"
+            None, _tr("热门配置不可用"),
+            _tr("请先在左下角设置页中开启「配置上传」功能，才能使用热门配置。\n\n"
+                "开启后，您可以浏览和下载其他高胜率玩家分享的配置。")
         )
         return True
     return False
@@ -325,43 +334,50 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
     if check_upload_disabled_and_warn(task):
         return
 
-    mode_name = "卡厄思模式" if mode == "chaos" else "出击模式"
+    mode_name = _tr("卡厄思模式") if mode == "chaos" else _tr("出击模式")
     dialog = QDialog()
-    dialog.setWindowTitle(f"热门配置 - {mode_name}")
+    dialog.setWindowTitle(f"{_tr('热门配置')} - {mode_name}")
     dialog.resize(650, 500)
 
     layout = QVBoxLayout(dialog)
 
     # 筛选行：排序方式 + 出战主战员筛选
     filter_layout = QHBoxLayout()
-    sort_label = QLabel("排序方式：")
+    sort_label = QLabel(_tr("排序方式："))
     sort_combo = QComboBox()
-    sort_combo.addItem("按胜率降序", "winrate")
-    sort_combo.addItem("按使用人数降序", "users")
+    sort_combo.addItem(_tr("按胜率降序"), "winrate")
+    sort_combo.addItem(_tr("按使用人数降序"), "users")
     filter_layout.addWidget(sort_label)
     filter_layout.addWidget(sort_combo)
 
     # 语言筛选
-    lang_filter_label = QLabel("语言：")
+    lang_filter_label = QLabel(_tr("语言："))
     lang_filter_combo = QComboBox()
-    lang_filter_combo.addItem("不限", "")
+    lang_filter_combo.addItem(_tr("不限"), "")
     filter_layout.addWidget(lang_filter_label)
     filter_layout.addWidget(lang_filter_combo)
 
     # 成员筛选：出击模式筛选首选主战员，卡厄思模式筛选刷存档主战员
     member_filter_label = QLabel(
-        "出战主战员：" if mode == "sortie" else "刷存档主战员："
+        _tr("出战主战员：") if mode == "sortie" else _tr("刷存档主战员：")
     )
     member_filter_combo = QComboBox()
-    member_filter_combo.addItem("不限", "")
+    member_filter_combo.addItem(_tr("不限"), "")
     filter_layout.addWidget(member_filter_label)
     filter_layout.addWidget(member_filter_combo)
 
     filter_layout.addStretch()
     layout.addLayout(filter_layout)
 
+    # 列表里每份配置都标了上传时的版本，这里显示自己的版本方便对照
+    current_version = _get_version()
+    version_text = f"{_tr('当前版本：')}{current_version}"
+    if current_version == "dev":
+        version_text += _tr("（从源代码运行，没有正式版本号）")
+    layout.addWidget(QLabel(version_text))
+
     # 加载提示
-    loading_label = QLabel("正在加载热门配置，请稍候...")
+    loading_label = QLabel(_tr("正在加载热门配置，请稍候..."))
     loading_label.setStyleSheet("color: gray; padding: 20px;")
     loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(loading_label)
@@ -373,10 +389,10 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
 
     # 按钮
     btn_layout = QHBoxLayout()
-    refresh_btn = QPushButton("刷新")
-    apply_btn = QPushButton("应用所选配置")
+    refresh_btn = QPushButton(_tr("刷新"))
+    apply_btn = QPushButton(_tr("应用所选配置"))
     apply_btn.setEnabled(False)
-    cancel_btn = QPushButton("取消")
+    cancel_btn = QPushButton(_tr("取消"))
     btn_layout.addWidget(refresh_btn)
     btn_layout.addStretch()
     btn_layout.addWidget(apply_btn)
@@ -394,10 +410,10 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
         current_lang = lang_filter_combo.currentData() or ""
         lang_filter_combo.blockSignals(True)
         lang_filter_combo.clear()
-        lang_filter_combo.addItem("不限", "")
+        lang_filter_combo.addItem(_tr("不限"), "")
         langs = sorted(set(r.get("game_lang", "简体中文") for r in all_results if r.get("game_lang")))
         for lang in langs:
-            lang_filter_combo.addItem(lang, lang)
+            lang_filter_combo.addItem(_tr(lang), lang)
         idx = lang_filter_combo.findData(current_lang)
         if idx >= 0:
             lang_filter_combo.setCurrentIndex(idx)
@@ -407,7 +423,7 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
             current_member = member_filter_combo.currentData() or ""
             member_filter_combo.blockSignals(True)
             member_filter_combo.clear()
-            member_filter_combo.addItem("不限", "")
+            member_filter_combo.addItem(_tr("不限"), "")
             members = sorted(set(r.get("first_member", "") for r in all_results if r.get("first_member")))
             for m in members:
                 member_filter_combo.addItem(m, m)
@@ -431,20 +447,22 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
         config_list.clear()
         loading_label.setVisible(False)
         if not filtered:
-            item = QListWidgetItem("暂无热门配置数据（至少需要5场有效数据才会被统计）")
+            item = QListWidgetItem(_tr("暂无热门配置数据（至少需要5场有效数据才会被统计）"))
             config_list.addItem(item)
             return
         for i, r in enumerate(filtered[:20], 1):
             wr = r["avg_win_rate"]
             uc = r["user_count"]
             ver = r.get("config_ver", "?")
-            gl = r.get("game_lang", "简体中文")
+            gl = _tr(r.get("game_lang", "简体中文"))
             fm = r.get("first_member", "")
+            stats = f"#{i}  {_tr('胜率')}: {wr:.0%}  {_tr('使用人数')}: {uc}"
+            tail = f"{_tr('语言')}: {gl}  {_tr('版本')}: {ver}"
             if fm:
-                member_label = "主战员" if mode == "sortie" else "刷存档主战员"
-                text = f"#{i}  胜率: {wr:.0%}  使用人数: {uc}  {member_label}: {fm}  语言: {gl}  版本: {ver}"
+                member_label = _tr("主战员") if mode == "sortie" else _tr("刷存档主战员")
+                text = f"{stats}  {member_label}: {fm}  {tail}"
             else:
-                text = f"#{i}  胜率: {wr:.0%}  使用人数: {uc}  语言: {gl}  版本: {ver}"
+                text = f"{stats}  {tail}"
             item = QListWidgetItem(text)
             item.setData(0x100, r)  # 36 = Qt.UserRole
             config_list.addItem(item)
@@ -463,18 +481,19 @@ def show_hot_configs_dialog(task: TriggerTask, mode: str):
         if not r:
             return
         reply = QMessageBox.question(
-            dialog, "确认应用",
-            f"将应用所选配置（胜率: {r['avg_win_rate']:.0%}, 使用人数: {r['user_count']}）\n当前配置将被覆盖。\n\n是否继续？",
+            dialog, _tr("确认应用"),
+            f"{_tr('将应用所选配置')}（{_tr('胜率')}: {r['avg_win_rate']:.0%}, {_tr('使用人数')}: {r['user_count']}）\n"
+            f"{_tr('当前配置将被覆盖。')}\n\n{_tr('是否继续？')}",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
             success = _import_config_from_text(task, r["config_b64"])
             if success:
-                QMessageBox.information(dialog, "导入成功", "热门配置已成功应用！")
+                QMessageBox.information(dialog, _tr("导入成功"), _tr("热门配置已成功应用！"))
                 refresh_task_config_widgets(task)
                 dialog.accept()
             else:
-                QMessageBox.warning(dialog, "导入失败", "配置解析失败，请重试。")
+                QMessageBox.warning(dialog, _tr("导入失败"), _tr("配置解析失败，请重试。"))
 
     # 绑定事件
     sort_combo.currentIndexChanged.connect(on_filter_changed)
