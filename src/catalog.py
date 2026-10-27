@@ -8,6 +8,8 @@
 - 新條目立刻存檔，只更新次數的話最多每 CATALOG.save_interval 秒存一次。
 - 卡牌、裝備第一次看到時另存一張裁切的 JPG（catalog_images/），給設定頁對照；
   條目被淘汰或刪除時圖片一起刪，所以總量受 max_entries_per_kind 限制。
+- 每筆記下在哪裡看到（sources：出击、零号系统、赛季卡厄思；卡厄思模式還分不出種類時記成卡厄思），
+  出擊與各種卡厄思的事件、卡牌、裝備不一定相同，挑選時依來源篩選。
 
 本模組不依賴 ok 套件，方便單元測試。
 """
@@ -21,6 +23,10 @@ from dataclasses import dataclass
 
 KINDS = ('event', 'card', 'equipment')
 KIND_NAMES = {'event': '事件任务', 'card': '卡牌', 'equipment': '装备'}
+# 來源：模式 → 可能的來源（卡厄思模式分不出種類時記成「卡厄思」）
+SORTIE_SOURCE = '出击'
+CHAOS_SOURCES = ('零号系统', '赛季卡厄思', '卡厄思')
+MODE_SOURCES = {'SortieMode': (SORTIE_SOURCE,), 'ChaosMode': CHAOS_SOURCES}
 CONFIG_NAME = '目录设置'
 ENABLED_KEY = '自动收集目录'
 
@@ -78,9 +84,10 @@ class Catalog:
     def _bucket(self, lang, kind):
         return self.data.setdefault(lang, {}).setdefault(kind, {})
 
-    def record(self, kind, name, text, lang, info='', image=None):
+    def record(self, kind, name, text, lang, info='', image=None, source=''):
         """記一筆；回傳 True 表示是新條目。名稱或內容太短（OCR 沒讀到）就略過。
-        image 是裁切好的畫面（numpy 陣列）或產生它的函式，條目還沒有圖時才取用並存檔。"""
+        image 是裁切好的畫面（numpy 陣列）或產生它的函式，條目還沒有圖時才取用並存檔。
+        source 是在哪裡看到的（出击、零号系统…），記在 sources 裡並累計次數。"""
         name, text = (name or '').strip(), (text or '').strip()
         if kind not in KINDS or (kind == 'event' and len(_norm(text)) < 2) or (kind != 'event' and not _norm(name)):
             return False
@@ -96,6 +103,9 @@ class Catalog:
                 removed_images = self._evict(bucket, keep=key)
             if now - entry['last'] >= CATALOG.repeat_window:
                 entry['seen'] += 1
+                if source:
+                    sources = entry.setdefault('sources', {})
+                    sources[source] = sources.get(source, 0) + 1
             entry['last'] = now
             # 裝備以名稱去重，描述與品質以最新看到的為準
             if text:
@@ -228,12 +238,24 @@ def union(*regions):
             max(r[2] for r in regions), max(r[3] for r in regions))
 
 
-def record(task, kind, name, text, lang, info='', region=None, path=None):
+def record(task, kind, name, text, lang, info='', region=None, path=None, source=''):
     """給辨識函式呼叫：開關打開時記進目錄；有 region 時順便存該區域的裁切圖。"""
     if not collecting_enabled(task):
         return False
     image = (lambda: crop(getattr(task, 'frame', None), region)) if region else None
-    return get_catalog(path).record(kind, name, text, lang, info, image)
+    return get_catalog(path).record(kind, name, text, lang, info, image, source)
+
+
+def from_sources(entry, sources):
+    """條目是否在這些來源看過；沒有來源紀錄的舊條目一律算符合。"""
+    seen = entry.get('sources')
+    return not sources or not seen or any(source in seen for source in sources)
+
+
+def mode_of(config):
+    """由模式設定檔名（ChaosMode.json 等）判斷是哪個模式；看不出來回傳空字串。"""
+    name = os.path.splitext(os.path.basename(getattr(config, 'config_file', '') or ''))[0]
+    return name if name in MODE_SOURCES else ''
 
 
 def matches(entry, query, shown=None):

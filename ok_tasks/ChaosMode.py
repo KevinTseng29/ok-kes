@@ -143,6 +143,7 @@ class ChaosMode(HumanizeMixin, TriggerTask):
         reset_all_status(self)
         _migrate_route_boss_to_elite(self)
         guard.reset(self)
+        self._chaos_kind = ""  # 看到零号系统或赛季卡厄思页面后才知道（目录记录来源用）
         super().enable()
 
     def _check_upload_if_needed(self):

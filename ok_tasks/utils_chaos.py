@@ -160,6 +160,7 @@ def handle_season_chaos_initial_page(task: TriggerTask):
         return False
 
     task.log_info("检测到赛季卡厄思初始页面")
+    task._chaos_kind = "赛季卡厄思"  # 目录记录来源用
     value_text = _get_region_text(task, (0.684, 0.308, 0.982, 0.754))
     value_match = _match_storage_data_value(task, value_text)
     if not value_match:
@@ -196,6 +197,7 @@ def handle_zero_system_initial_page(task: TriggerTask):
         return False
 
     task.log_info("检测到零式系统初始页面")
+    task._chaos_kind = "零号系统"  # 目录记录来源用
     value_text = _get_region_text(task, (0.685, 0.317, 0.980, 0.825))
     value_match = _match_storage_data_value(task, value_text)
     required_level = int(
@@ -518,6 +520,7 @@ def handle_zero_system_home(task: TriggerTask):
     codex = find_box_at_point(task, 0.812, 0.469)
     if title and _get_game_text(task, '零式系统') in title.name and codex and codex.name == "法典":
         task.log_info("检测到零式系统首页，点击法典")
+        task._chaos_kind = "零号系统"  # 目录记录来源用
         task.click_box(codex)
         task.sleep(2)
         return True

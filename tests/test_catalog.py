@@ -92,6 +92,31 @@ class TestRecord(CatalogTestCase):
         self.assertEqual(self.names('event'), ['经常出现', '较少出现'])
 
 
+class TestSources(CatalogTestCase):
+    def test_sources_counted_per_sighting(self):
+        self.cat.record('card', '剑之雨', '造成伤害', '繁体中文', source='零号系统')
+        self.cat.record('card', '剑之雨', '造成伤害', '繁体中文', source='零号系统')  # 同一畫面
+        self.clock.now += 61
+        self.cat.record('card', '剑之雨', '造成伤害', '繁体中文', source='出击')
+        (_, entry), = self.cat.entries('card', '繁体中文')
+        self.assertEqual(entry['sources'], {'零号系统': 1, '出击': 1})
+
+    def test_from_sources_and_mode_of(self):
+        chaos_only = {'sources': {'赛季卡厄思': 2}}
+        legacy = {}
+        self.assertTrue(catalog.from_sources(chaos_only, catalog.CHAOS_SOURCES))
+        self.assertFalse(catalog.from_sources(chaos_only, ('出击',)))
+        self.assertTrue(catalog.from_sources(chaos_only, ()))
+        self.assertTrue(catalog.from_sources(legacy, ('出击',)))
+
+        class Config(dict):
+            config_file = os.path.join('configs', 'SortieMode.json')
+
+        self.assertEqual(catalog.mode_of(Config()), 'SortieMode')
+        self.assertEqual(catalog.mode_of({}), '')
+        self.assertEqual(catalog.MODE_SOURCES['SortieMode'], ('出击',))
+
+
 class TestPersistence(CatalogTestCase):
     def test_new_entries_saved_immediately_counts_throttled(self):
         catalog.CATALOG.save_interval = 120

@@ -3,6 +3,7 @@
 
 - 只在 LIST_CATALOGS 列出的清單編輯視窗出現，選項依該模式的「游戏语言」分開；
   裝備 N 號位優先級只列出該號位的裝備。
+- 只列出在目前模式看過的項目（出擊、卡厄思分開）；卡厄思模式可再切換只看零號系統或賽季卡厄思。
 - 加入的是名稱（事件任務是任務內容；閃光優先級是名稱＋效果，可再刪短）。顯示照介面語言，
   存檔仍是目錄裡的原文（簡體），執行時會先轉簡體再比對。
 - 清單裡已有的卡牌、裝備，滑鼠停在上面會顯示目錄裡的效果。
@@ -11,7 +12,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidgetItem
-from qfluentwidgets import BodyLabel, LineEdit, MessageBoxBase, PushButton, SubtitleLabel, TableWidget
+from qfluentwidgets import BodyLabel, ComboBox, LineEdit, MessageBoxBase, PushButton, SubtitleLabel, TableWidget
 
 from ok import og
 from src import catalog
@@ -53,16 +54,29 @@ def keyword_of(kind, entry, with_text=False):
 
 def _columns(kind):
     if kind == 'event':
-        return [_tr('任务内容'), _tr('出现次数')]
-    return [_tr('名称'), _tr('效果'), _tr('类型'), _tr('出现次数')]
+        return [_tr('任务内容'), _tr('来源'), _tr('出现次数')]
+    return [_tr('名称'), _tr('效果'), _tr('类型'), _tr('来源'), _tr('出现次数')]
+
+
+def _source_text(entry):
+    return '、'.join(_tr(source) for source in entry.get('sources', {}))
+
+
+def _source_choices(sources):
+    """來源篩選的選項：(顯示文字, 來源組)。只有一種來源時不需要篩選。"""
+    if len(sources) <= 1:
+        return []
+    # 「卡厄思」是還分不出種類時的紀錄，只出現在「全部」
+    return [(_tr('全部'), tuple(sources))] + [(_tr(s), (s,)) for s in sources if s != '卡厄思']
 
 
 class CatalogDialog(MessageBoxBase):
 
-    def __init__(self, kind, lang, parent, on_add, with_text=False, path=None, info_prefix=None):
+    def __init__(self, kind, lang, parent, on_add, with_text=False, path=None, info_prefix=None, sources=()):
         super().__init__(parent)
         self.kind, self.lang, self.on_add, self.with_text = kind, lang, on_add, with_text
         self.info_prefix = info_prefix
+        self.sources = tuple(sources)
         self.catalog = catalog.get_catalog(path)
         self.rows = []
 
@@ -77,7 +91,19 @@ class CatalogDialog(MessageBoxBase):
         self.search.setClearButtonEnabled(True)
         self.search.setPlaceholderText(_tr('搜索名称或效果'))
         self.search.textChanged.connect(self.reload)
-        self.viewLayout.addWidget(self.search)
+        self.source_filter = None
+        choices = _source_choices(self.sources)
+        if choices:
+            self.source_filter = ComboBox(self)
+            for text, group in choices:
+                self.source_filter.addItem(text, userData=group)
+            self.source_filter.currentIndexChanged.connect(lambda _: self.reload())
+            search_row = QHBoxLayout()
+            search_row.addWidget(self.search, 1)
+            search_row.addWidget(self.source_filter)
+            self.viewLayout.addLayout(search_row)
+        else:
+            self.viewLayout.addWidget(self.search)
 
         self.table = TableWidget(self)
         self.table.setColumnCount(len(_columns(kind)))
@@ -123,11 +149,17 @@ class CatalogDialog(MessageBoxBase):
         self.widget.setMinimumSize(1000 if self.preview else 900, 620)
         self.reload()
 
+    def active_sources(self):
+        if self.source_filter is not None:
+            return self.source_filter.currentData() or self.sources
+        return self.sources
+
     def all_entries(self):
         entries = self.catalog.entries(self.kind, self.lang)
         if self.info_prefix:
             entries = [(key, entry) for key, entry in entries if entry.get('info', '').startswith(self.info_prefix)]
-        return entries
+        sources = self.active_sources()
+        return [(key, entry) for key, entry in entries if catalog.from_sources(entry, sources)]
 
     def reload(self):
         query = self.search.text()
@@ -135,9 +167,10 @@ class CatalogDialog(MessageBoxBase):
         self.table.setRowCount(len(self.rows))
         for row, (key, entry) in enumerate(self.rows):
             if self.kind == 'event':
-                cells = [_tr(entry['text']), str(entry['seen'])]
+                cells = [_tr(entry['text']), _source_text(entry), str(entry['seen'])]
             else:
-                cells = [_tr(entry['name']), _tr(entry.get('text', '')), _tr(entry.get('info', '')), str(entry['seen'])]
+                cells = [_tr(entry['name']), _tr(entry.get('text', '')), _tr(entry.get('info', '')),
+                         _source_text(entry), str(entry['seen'])]
             for column, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 item.setToolTip(text)
@@ -181,13 +214,13 @@ class CatalogDialog(MessageBoxBase):
             self.reload()
 
 
-def _effect_lookup(kind, lang, path=None):
+def _effect_lookup(kind, lang, path=None, sources=()):
     """名稱 → 顯示用的效果說明（卡牌取出現最多的那一筆）。"""
     lookup = {}
     if kind == 'event':
         return lookup
     for _, entry in catalog.get_catalog(path).entries(kind, lang):
-        if entry.get('text'):
+        if entry.get('text') and catalog.from_sources(entry, sources):
             lookup.setdefault(entry['name'], entry['text'])
     return lookup
 
@@ -216,7 +249,8 @@ def attach(dialog, key, config, path=None):
     if kind is None or dialog.options_available is not None:
         return False
     lang = (config.get('游戏语言') if config is not None else None) or '简体中文'
-    effects = _effect_lookup(kind, lang, path)
+    sources = catalog.MODE_SOURCES.get(catalog.mode_of(config), ())
+    effects = _effect_lookup(kind, lang, path, sources)
     source_by_shown = getattr(dialog, '_source_by_shown', None) or {}
     for i in range(dialog.list_widget.count()):
         item = dialog.list_widget.item(i)
@@ -226,7 +260,8 @@ def attach(dialog, key, config, path=None):
 
     def open_picker():
         picker = CatalogDialog(kind, lang, dialog.window(), lambda words: add_keywords(dialog, words, effects),
-                               with_text=key in NAME_AND_TEXT_KEYS, path=path, info_prefix=SLOT_KEYS.get(key))
+                               with_text=key in NAME_AND_TEXT_KEYS, path=path, info_prefix=SLOT_KEYS.get(key),
+                               sources=sources)
         picker.exec()
 
     button = PushButton(_tr('从目录挑选'), dialog)

@@ -77,7 +77,8 @@ class TestCatalogDialog(unittest.TestCase):
         picker, _ = self.picker()
         self.assertEqual(picker.table.rowCount(), 2)
         row = self.row_of(picker, '剑之雨')
-        self.assertEqual([picker.table.item(row, c).text() for c in range(4)], ['劍之雨', '造成3次傷害', '攻击', '1'])
+        self.assertEqual([picker.table.item(row, c).text() for c in range(5)],
+                         ['劍之雨', '造成3次傷害', '攻击', '', '1'])
         picker.search.setText('劍之')
         self.assertEqual(picker.table.rowCount(), 1)
         picker.search.setText('不存在')
@@ -110,6 +111,29 @@ class TestCatalogDialog(unittest.TestCase):
                               info_prefix='3号位')
         self.assertEqual(empty.table.rowCount(), 0)
         self.assertIn('目录还没有资料', empty.empty_label.text())
+
+    def test_sources_filter_by_mode_and_chaos_kind(self):
+        from src import catalog
+        from src.ui.catalog_dialog import CatalogDialog
+        self.catalog.record('equipment', '零号装备', '效果', '繁体中文', '1号位 武器', source='零号系统')
+        self.catalog.record('equipment', '赛季装备', '效果', '繁体中文', '1号位 武器', source='赛季卡厄思')
+        self.catalog.record('equipment', '出击装备', '效果', '繁体中文', '1号位 武器', source='出击')
+
+        def names(picker):
+            return sorted(entry['name'] for _, entry in picker.rows)
+
+        chaos = CatalogDialog('equipment', '繁体中文', self.window, lambda words: None, path=self.path,
+                              sources=catalog.CHAOS_SOURCES)
+        self.assertEqual(names(chaos), ['赛季装备', '零号装备'])
+        self.assertEqual(chaos.source_filter.count(), 3)  # 全部、零號系統、賽季卡厄思
+        chaos.source_filter.setCurrentIndex(2)
+        self.assertEqual(names(chaos), ['赛季装备'])
+        self.assertEqual(chaos.table.item(0, 3).text(), '赛季卡厄思')
+
+        sortie = CatalogDialog('equipment', '繁体中文', self.window, lambda words: None, path=self.path,
+                               sources=catalog.MODE_SOURCES['SortieMode'])
+        self.assertIsNone(sortie.source_filter)
+        self.assertEqual(names(sortie), ['出击装备'])
 
     def test_event_picker_inserts_task_text(self):
         picker, added = self.picker(kind='event')

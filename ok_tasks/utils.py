@@ -132,6 +132,17 @@ def _get_game_language(task: TriggerTask):
 _catalog_error_logged = False
 
 
+def _catalog_source(task: TriggerTask):
+    """目录来源：出击模式记「出击」；卡厄思模式记目前是零号系统或赛季卡厄思（看过对应页面后才知道），
+    还分不出来时记「卡厄思」。"""
+    task_class = type(task).__name__
+    if task_class == "SortieMode":
+        return "出击"
+    if task_class == "ChaosMode":
+        return getattr(task, "_chaos_kind", "") or "卡厄思"
+    return task_class
+
+
 def _record_catalog(task: TriggerTask, kind, name, text, info="", regions=()):
     """把看到的事件任务、卡牌、装备记进目录（设置页挑选用），regions 合起来就是要存对照图的区域；
     出错不影响流程，只记一次日志。"""
@@ -139,7 +150,8 @@ def _record_catalog(task: TriggerTask, kind, name, text, info="", regions=()):
     try:
         from src import catalog
         region = catalog.union(*regions) if regions else None
-        catalog.record(task, kind, name, text, _get_game_language(task), info, region)
+        catalog.record(task, kind, name, text, _get_game_language(task), info, region,
+                       source=_catalog_source(task))
     except Exception as e:
         if not _catalog_error_logged:
             _catalog_error_logged = True

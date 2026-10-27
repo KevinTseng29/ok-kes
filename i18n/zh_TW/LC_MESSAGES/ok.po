@@ -506,6 +506,10 @@ msgid "任务内容"
 msgstr "任務內容"
 
 #: src/ui/catalog_dialog.py
+msgid "来源"
+msgstr "來源"
+
+#: src/ui/catalog_dialog.py
 msgid "出现次数"
 msgstr "出現次數"
 
@@ -520,6 +524,10 @@ msgstr "效果"
 #: src/ui/catalog_dialog.py
 msgid "类型"
 msgstr "類型"
+
+#: src/ui/catalog_dialog.py
+msgid "全部"
+msgstr "全部"
 
 #: src/ui/catalog_dialog.py
 msgid "从目录挑选"
