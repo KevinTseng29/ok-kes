@@ -11,6 +11,10 @@ jobs:
 
     runs-on: windows-latest
 
+    # 建立 Release 需要寫入權限（fork 的預設權限可能是唯讀）
+    permissions:
+      contents: write
+
     env:
       PYTHONIOENCODING: 'UTF-8'
 
@@ -60,6 +64,8 @@ jobs:
 
       - name: Sync Repositories # 同步部分代码(deploy.txt中), 合并tag中间更新日志, 到更新库, 以减少用户更新使用的git库大小
         id: sync   # Give the step an ID to access its outputs
+        # 只同步原作者的更新库；fork 的安装版直接从 fork 的 tag 更新（见 pyappify.yml）
+        if: github.repository_owner == 'baoxin1100'
         uses: ok-oldking/partial-sync-repo@master
         with:
           repos: |
@@ -75,7 +81,7 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && github.repository_owner == 'baoxin1100'
         with:
           draft: false
           body: |
@@ -90,8 +96,17 @@ jobs:
               * [UC网盘](https://drive.uc.cn/s/fee4cb3d65cd4?public=1), 免费，需下载UC网盘客户端
           files: pyappify_dist/*
 
+      - name: Release (fork)
+        # fork 的更新说明写在 .github/release-notes/<tag>.md，发版前先建立
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') && github.repository_owner != 'baoxin1100'
+        with:
+          draft: false
+          body_path: .github/release-notes/${{ github.ref_name }}.md
+          files: pyappify_dist/*
+
       - name: Trigger MirrorChyanUploading
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && github.repository_owner == 'baoxin1100'
         shell: bash
         run: |
           gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_uploading.yml -f tag=${{ github.ref_name }}
