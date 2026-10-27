@@ -1,0 +1,29 @@
+name: Unit Tests
+
+# 推送或對 humanize-input 開 PR 時跑單元測試。
+# 只跑 tests/test_*.py：這些測試用假的 base class，不需要安裝 ok-script 與 OCR 模型；
+# 需要框架與 GUI 的 tests/TestMain.py 不在其中。
+
+on:
+  push:
+    branches:
+      - humanize-input
+  pull_request:
+    branches:
+      - humanize-input
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
