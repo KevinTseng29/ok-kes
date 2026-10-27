@@ -6,8 +6,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ok_tasks'))
 
 import navigation  # noqa: E402
-from navigation import (HOME_BUTTON, WAKE_POINT, NavigationSettings,  # noqa: E402
-                        handle_chaos_navigation, handle_sortie_navigation, is_lobby)
+from navigation import (HOME_BUTTON, SEASON_BANNER_POINT, WAKE_POINT, NavigationSettings,  # noqa: E402
+                        chaos_entry, handle_chaos_navigation, handle_sortie_navigation, is_lobby)
 
 
 class FakeBox:
@@ -43,6 +43,13 @@ class FakeTask:
         self.calls.append(('disable',))
 
 
+class SeasonTask(FakeTask):
+    """設定頁的卡厄思入口選了賽季卡厄思。"""
+
+    def get_global_config(self, option):
+        return {'导航设置': {'卡厄思入口': '赛季卡厄思'}}[option]
+
+
 # 依國際服實測的畫面配置（OCR 結果已轉簡體）
 LOBBY = [
     FakeBox('黑兔', 0.11, 0.05), FakeBox('36/290', 0.70, 0.05),
@@ -56,6 +63,22 @@ GLOBAL_MENU = [FakeBox('故事', 0.58, 0.09), FakeBox('出击', 0.58, 0.20), Fak
 CHAOS_MENU = [FakeBox('卡厄思', 0.11, 0.045), FakeBox('卡厄思显现', 0.30, 0.80, width=160),
               FakeBox('零号系统', 0.69, 0.80, width=140)]
 SEASON_CHAOS_INITIAL = [FakeBox('卡厄思', 0.11, 0.045), FakeBox('再次观测', 0.80, 0.78)]
+# 大廳左上活動橫幅與右下賽季橫幅都有倒數
+LOBBY_WITH_SEASON = LOBBY + [FakeBox('35天10小时', 0.07, 0.21, width=120),
+                             FakeBox('56天10小时', 0.91, 0.83, width=120),
+                             FakeBox('雪凝结的约产', 0.88, 0.905, width=160)]
+# 賽季首頁（2026-10「雪上凝結的約定」，標題每季不同）
+SEASON_HUB = [FakeBox('银河系灾害', 0.13, 0.045, width=140), FakeBox('银河徽章', 0.12, 0.15),
+              FakeBox('故事', 0.45, 0.37), FakeBox('第6幕——第0章第1话', 0.40, 0.41, width=200),
+              FakeBox('卡厄思', 0.204, 0.526), FakeBox('每周进度', 0.208, 0.565), FakeBox('0/8000', 0.20, 0.60),
+              FakeBox('前半期', 0.84, 0.17), FakeBox('14天11小时', 0.81, 0.26, width=120),
+              FakeBox('雪上凝结约定', 0.83, 0.73, width=160), FakeBox('赛季资讯', 0.92, 0.86)]
+SEASON_CHAOS_PAGE = [FakeBox('卡厄思', 0.115, 0.045), FakeBox('赛季资讯', 0.196, 0.045),
+                     FakeBox('天上防护墙', 0.75, 0.215), FakeBox('存档资料储存上限120pt', 0.785, 0.40, width=220),
+                     FakeBox('再次观测', 0.762, 0.793), FakeBox('每周进度', 0.461, 0.884),
+                     FakeBox('0/8000', 0.63, 0.885), FakeBox('进入', 0.941, 0.898)]
+ZERO_SYSTEM_HOME = [FakeBox('零号系统', 0.12, 0.046), FakeBox('法典', 0.81, 0.47),
+                    FakeBox('卡厄思物质', 0.14, 0.91), FakeBox('每周进度', 0.73, 0.905)]
 
 
 def page(title, *extra):
@@ -121,6 +144,88 @@ class TestChaosMenu(NavigationTestCase):
         task = FakeTask(CHAOS_MENU)
         self.assertTrue(handle_sortie_navigation(task))
         self.assertEqual(task.calls, [('click', *HOME_BUTTON)])
+
+
+class TestSeasonChaos(NavigationTestCase):
+    def test_entry_setting_and_fallbacks(self):
+        self.assertEqual(chaos_entry(FakeTask()), '零号系统')
+        self.assertEqual(chaos_entry(SeasonTask()), '赛季卡厄思')
+
+        class Broken(FakeTask):
+            def get_global_config(self, option):
+                raise KeyError(option)
+
+        class Unknown(FakeTask):
+            def get_global_config(self, option):
+                return {'卡厄思入口': '不存在的入口'}
+
+        self.assertEqual(chaos_entry(Broken()), '零号系统')
+        self.assertEqual(chaos_entry(Unknown()), '零号系统')
+        navigation.NAV.chaos_entry = '赛季卡厄思'
+        self.assertEqual(chaos_entry(FakeTask()), '赛季卡厄思')
+
+    def test_lobby_clicks_season_banner(self):
+        task = SeasonTask(LOBBY_WITH_SEASON)
+        self.assertTrue(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [('click', *SEASON_BANNER_POINT)])
+
+    def test_zero_system_entry_ignores_season_banner(self):
+        task = FakeTask(LOBBY_WITH_SEASON)
+        self.assertTrue(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [('click_box', '卡厄思')])
+
+    def test_lobby_without_season_banner_stops_after_misses(self):
+        task = SeasonTask(LOBBY + [FakeBox('35天10小时', 0.07, 0.21, width=120)])
+        results = [handle_chaos_navigation(task) for _ in range(3)]
+        self.assertEqual(results, [False, False, True])
+        self.assertEqual(task.calls, [('disable',)])
+
+    def test_banner_found_resets_misses(self):
+        task = SeasonTask(LOBBY)
+        handle_chaos_navigation(task)
+        handle_chaos_navigation(task)
+        task.all_texts = LOBBY_WITH_SEASON
+        handle_chaos_navigation(task)
+        task.all_texts = LOBBY
+        self.assertFalse(handle_chaos_navigation(task))
+        self.assertNotIn(('disable',), task.calls)
+
+    def test_countdown_formats(self):
+        for text, expected in (('56天10小时', True), ('5小时', True), ('23分钟', True), ('1天', True),
+                               ('63/290', False), ('第1幕', False), ('天', False)):
+            task = SeasonTask(LOBBY + [FakeBox(text, 0.91, 0.83, width=120)])
+            self.assertEqual(handle_chaos_navigation(task), expected, text)
+
+    def test_lobby_stops_when_auto_enter_disabled(self):
+        navigation.NAV.enter_mode_from_lobby = False
+        task = SeasonTask(LOBBY_WITH_SEASON)
+        self.assertTrue(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [('disable',)])
+
+    def test_hub_clicks_chaos_node(self):
+        task = SeasonTask(SEASON_HUB)
+        self.assertTrue(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [('click_box', '卡厄思')])
+        # 入口選零號系統時不動賽季首頁
+        task = FakeTask(SEASON_HUB)
+        self.assertFalse(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [])
+
+    def test_chaos_menu_goes_home_for_season(self):
+        task = SeasonTask(CHAOS_MENU)
+        self.assertTrue(handle_chaos_navigation(task))
+        self.assertEqual(task.calls, [('click', *HOME_BUTTON)])
+
+    def test_chaos_pages_left_to_mode_handlers(self):
+        for texts in (SEASON_CHAOS_PAGE, SEASON_CHAOS_INITIAL, ZERO_SYSTEM_HOME):
+            for task in (SeasonTask(texts), FakeTask(texts)):
+                self.assertFalse(handle_chaos_navigation(task))
+                self.assertEqual(task.calls, [])
+
+    def test_sortie_ignores_season_setting(self):
+        task = SeasonTask(LOBBY_WITH_SEASON)
+        self.assertTrue(handle_sortie_navigation(task))
+        self.assertEqual(task.calls, [('click_box', '出击')])
 
 
 class TestForeignPages(NavigationTestCase):

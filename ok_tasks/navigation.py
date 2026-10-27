@@ -6,6 +6,10 @@
 - 子頁共用標頭：左上是返回鍵加頁名，右上是「回大廳」⌂ 與全域選單 ≡。
 - 卡厄思模式：大廳 → 卡厄思 → 零號系統；出擊模式：大廳 → 出擊。
   之後的頁面（零號系統首頁點法典、出擊頁點進入）交給各模式原本的處理函式。
+- 賽季卡厄思（設定頁「导航设置 → 卡厄思入口」選賽季卡厄思時）：大廳右下的賽季橫幅
+  （帶「N天N小時」倒數）→ 賽季首頁 → 「卡厄思」節點（正下方是「每週進度」）→ 賽季卡厄思頁，
+  之後由原本的 handle_season_chaos_initial_page／handle_enter 接手。每季的橫幅與首頁外觀、
+  標題都不同，所以只靠倒數與「卡厄思＋每週進度」這組文字辨認。
 
 handle_chaos_navigation / handle_sortie_navigation 是 PAGE_HANDLERS 形式：
 每輪看一次畫面，需要時做一步並回傳 True。它們取代原本的 handle_non_battle_page
@@ -24,8 +28,11 @@ from dataclasses import dataclass
 class NavigationSettings:
     # 在大廳時自動進入目前的模式；False 時維持原本「回到大廳就停止」
     enter_mode_from_lobby: bool = True
-    # 卡厄思頁要點哪張卡：'零号系统' 或 '卡厄思显现'
+    # 讀不到設定頁的「导航设置」時（例如單元測試）使用的卡厄思入口：
+    # '零号系统'、'赛季卡厄思' 或 '卡厄思显现'
     chaos_entry: str = '零号系统'
+    # 在大廳連續幾輪都找不到賽季入口就停止
+    season_banner_misses: int = 3
     # 誤入其他功能頁（救援、方舟都市等）時按「回大廳」；False 時改為停止
     leave_foreign_pages: bool = True
     # 畫面完全沒有文字超過這個秒數，就點一下空白處喚醒大廳 UI
@@ -52,6 +59,20 @@ CHAOS_ENTRIES = {
     '零号系统': ('零号系统', '零式系统'),
     '卡厄思显现': ('卡厄思显现',),
 }
+ALL_CHAOS_CARDS = tuple(name for names in CHAOS_ENTRIES.values() for name in names)
+
+# 設定頁的全局配置；名稱與選項需和 src/config.py 的 navigation_option 一致
+NAV_CONFIG_NAME = '导航设置'
+CHAOS_ENTRY_KEY = '卡厄思入口'
+SEASON_ENTRY = '赛季卡厄思'
+
+# 賽季入口：大廳右下橫幅上的倒數（例如 56天10小时、5小时、23分钟）
+SEASON_BANNER_REGION = (0.70, 0.75, 1.0, 0.90)
+COUNTDOWN = re.compile(r'^(?=.*\d)(?:\d+天)?(?:\d+小时)?(?:\d+分钟?)?$')
+# 橫幅下緣（約 y>0.88）點了沒反應，點偏上的位置
+SEASON_BANNER_POINT = (0.852, 0.860)
+SEASON_CHAOS_NODE = '卡厄思'
+SEASON_PROGRESS = '每周进度'
 
 # 誤入時要離開的子頁標題。不含「故事」：劇情裡的戰鬥與卡厄思關卡會手動開啟
 # 出擊／卡厄思模式，打完會回到故事頁，不能把它當成走錯頁。
@@ -64,9 +85,12 @@ def _clean(text):
     return re.sub(r'[^一-鿿\w]', '', text or '')
 
 
+def _center(task, box):
+    return (box.x + box.width / 2) / task.width, (box.y + box.height / 2) / task.height
+
+
 def _center_in(task, box, region):
-    cx = (box.x + box.width / 2) / task.width
-    cy = (box.y + box.height / 2) / task.height
+    cx, cy = _center(task, box)
     x1, y1, x2, y2 = region
     return x1 <= cx <= x2 and y1 <= cy <= y2
 
@@ -141,18 +165,81 @@ def _wake_blank_screen(task):
     return True
 
 
+def chaos_entry(task):
+    """目前的卡厄思入口：優先讀設定頁的「导航设置」，讀不到或值不認得就用 NAV.chaos_entry。"""
+    try:
+        value = task.get_global_config(NAV_CONFIG_NAME).get(CHAOS_ENTRY_KEY)
+    except Exception:
+        value = None
+    if value == SEASON_ENTRY or value in CHAOS_ENTRIES:
+        return value
+    return NAV.chaos_entry
+
+
+def _find_season_countdown(task):
+    for box in task.all_texts or []:
+        if COUNTDOWN.match(_clean(box.name)) and _center_in(task, box, SEASON_BANNER_REGION):
+            return box
+    return None
+
+
+def _enter_season_from_lobby(task):
+    countdown = _find_season_countdown(task)
+    if not countdown:
+        task._nav_season_misses = getattr(task, '_nav_season_misses', 0) + 1
+        if task._nav_season_misses < NAV.season_banner_misses:
+            return False
+        task._nav_season_misses = 0
+        task.log_info('大廳右下找不到賽季入口（倒數時間），停止卡厄思模式')
+        task.disable()
+        return True
+    task._nav_season_misses = 0
+    task.log_info(f'在大廳，點擊右下賽季入口（剩餘 {_clean(countdown.name)}）')
+    task.click(*SEASON_BANNER_POINT)
+    task.sleep(NAV.transition_wait)
+    return True
+
+
+def _find_season_chaos_node(task):
+    """賽季首頁的「卡厄思」節點：文字正下方緊接著「每周进度」。"""
+    texts = task.all_texts or []
+    progresses = [_center(task, b) for b in texts if _clean(b.name) == SEASON_PROGRESS]
+    for box in texts:
+        if _clean(box.name) != SEASON_CHAOS_NODE:
+            continue
+        x, y = _center(task, box)
+        if any(abs(px - x) < 0.06 and 0 < py - y < 0.08 for px, py in progresses):
+            return box
+    return None
+
+
 def handle_chaos_navigation(task):
-    """卡厄思模式的導航：大廳 → 卡厄思 → 零號系統；誤入其他功能頁就回大廳。"""
+    """卡厄思模式的導航：大廳 → 零號系統或賽季卡厄思；誤入其他功能頁就回大廳。"""
+    entry = chaos_entry(task)
+    season = entry == SEASON_ENTRY
     if is_lobby(task):
+        if season and NAV.enter_mode_from_lobby:
+            return _enter_season_from_lobby(task)
         return _enter_from_lobby(task, '卡厄思', '卡厄思模式')
-    if _find(task, (CHAOS_MENU_TITLE,), TITLE_REGION):
-        names = CHAOS_ENTRIES.get(NAV.chaos_entry, CHAOS_ENTRIES['零号系统'])
-        card = _find(task, names, CHAOS_CARD_REGION)
-        if card:
-            task.log_info(f'在卡厄思頁，點擊「{_clean(card.name)}」')
-            task.click_box(card, after_sleep=0)
+    if season:
+        node = _find_season_chaos_node(task)
+        if node:
+            task.log_info('在賽季首頁，點擊「卡厄思」')
+            task.click_box(node, after_sleep=0)
             task.sleep(NAV.transition_wait)
             return True
+    if _find(task, (CHAOS_MENU_TITLE,), TITLE_REGION):
+        if season:
+            if _find(task, ALL_CHAOS_CARDS, CHAOS_CARD_REGION):
+                click_home(task, '卡厄思入口是賽季卡厄思，要從大廳右下進入')
+                return True
+        else:
+            card = _find(task, CHAOS_ENTRIES.get(entry, CHAOS_ENTRIES['零号系统']), CHAOS_CARD_REGION)
+            if card:
+                task.log_info(f'在卡厄思頁，點擊「{_clean(card.name)}」')
+                task.click_box(card, after_sleep=0)
+                task.sleep(NAV.transition_wait)
+                return True
     if _leave_foreign_page(task, CHAOS_FOREIGN_TITLES):
         return True
     return _wake_blank_screen(task)

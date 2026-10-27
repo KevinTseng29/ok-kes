@@ -96,6 +96,18 @@ ocr_backend_option = ConfigOption('OCR设置', {
     },
 }, description='自动模式仅在内存不少于12GB的Intel设备上使用OpenVINO，其他设备使用ONNX Runtime。修改后重启程序生效。')
 
+# 导航设置：全局配置，不会随模式配置上传。名称与选项需和 ok_tasks/navigation.py 一致
+CHAOS_ENTRY_ZERO_SYSTEM = "零号系统"
+CHAOS_ENTRY_SEASON = "赛季卡厄思"
+navigation_option = ConfigOption('导航设置', {
+    '卡厄思入口': CHAOS_ENTRY_ZERO_SYSTEM,
+}, config_type={
+    '卡厄思入口': {
+        'type': 'drop_down',
+        'options': [CHAOS_ENTRY_ZERO_SYSTEM, CHAOS_ENTRY_SEASON],
+    },
+}, description='卡厄思模式在大厅时要进入哪种卡厄思。赛季卡厄思从大厅右下角的赛季入口进入。\n已经在零号系统或赛季卡厄思页面里启动时，不受此设置影响。')
+
 
 def make_bottom_right_black(frame): #可选. 某些游戏截图时遮挡UID使用
     """
@@ -135,7 +147,7 @@ config = {
     'debug': False,  # Optional, default: False
     'use_gui': True, # 目前只支持True
     'config_folder': 'configs', #最好不要修改
-    'global_configs': [key_config_option, upload_config_option, ocr_backend_option],
+    'global_configs': [key_config_option, upload_config_option, ocr_backend_option, navigation_option],
     'screenshot_processor': make_bottom_right_black, # 在截图的时候对frame进行修改, 可选
     'gui_icon': 'icons/icon.png', #窗口图标, 最好不需要修改文件名
     'wait_until_before_delay': 0,
