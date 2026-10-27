@@ -1347,6 +1347,8 @@ def handle_memory_engrave(task: TriggerTask):
             task._memory_engrave_clicks = clicks + 1
             task.log_info(f"记忆雕琢: 点击雕琢（第{clicks + 1}次）")
             task.click_box(engrave)
+            # 连按雕琢时画面几乎不变，是正常流程：重新计时，免得 handle_stuck_log 判成卡住去乱点（最多 20 次）
+            task._last_change_time = time.time()
             task.sleep(1.8)
             return True
         task.log_warning("记忆雕琢: 雕琢点击次数达到20次上限，停止继续点击")
