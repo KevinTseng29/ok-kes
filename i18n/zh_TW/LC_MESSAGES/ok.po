@@ -201,6 +201,26 @@ msgstr "默認刷閃光優先級第一張，可刷神閃，第一層沒刷出自
 msgid "德朗商店免费刷新次数用完后，仅当信用点大于该值且足够支付刷新价格时才付费刷新。"
 msgstr "德朗商店免費刷新次數用完後，僅當信用點大於該值且足夠支付刷新價格時才付費刷新。"
 
+#: ok_tasks/ChaosModeExperimental.py
+msgid "自动卡厄思模式（实验）"
+msgstr "自動卡厄思模式（實驗）"
+
+#: ok_tasks/ChaosModeExperimental.py
+msgid "1. 请主动打开游戏内自动战斗和自动剧情功能。\n2. 国际服玩家请将本模式配置中的\"游戏语言\"设置为繁体中文。\n3. 实验功能：灵光一闪/神闪按「预设卡组」选择；效果和神闪都不符合时，在非神闪卡里随机选，三张全神闪选第一张。"
+msgstr "1. 請主動打開遊戲內自動戰鬥和自動劇情功能。\n2. 國際服玩家請將本模式配置中的\"遊戲語言\"設置為繁體中文。\n3. 實驗功能：靈光一閃/神閃按「預設卡組」選擇；效果和神閃都不符合時，在非神閃卡里隨機選，三張全神閃選第一張。"
+
+#: ok_tasks/ChaosModeExperimental.py
+msgid "预设卡组"
+msgstr "預設卡組"
+
+#: ok_tasks/ChaosModeExperimental.py
+msgid "按列表从上到下匹配。一条记录代表一张卡，需要两张就复制一条。\n匹配顺序：卡牌名 → 卡牌效果 → 神闪效果。\n效果和神闪效果填写能唯一识别界面文字的关键字即可，可多行。\n每条记录可以单独勾选“拒绝神闪”：这张卡出现神闪形态时不选它。\n编辑窗口支持从官方卡组码离线导入；成功后覆盖列表，保存后生效。\n卡牌效果和神闪效果都不符合时：在非神闪卡里随机选；三张全神闪选第一张。"
+msgstr "按列表從上到下匹配。一條記錄代表一張卡，需要兩張就複製一條。\n匹配順序：卡牌名 → 卡牌效果 → 神閃效果。\n效果和神閃效果填寫能唯一識別界面文字的關鍵字即可，可多行。\n每條記錄可以單獨勾選“拒絕神閃”：這張卡出現神閃形態時不選它。\n編輯窗口支持從官方卡組碼離線導入；成功後覆蓋列表，保存後生效。\n卡牌效果和神閃效果都不符合時：在非神閃卡里隨機選；三張全神閃選第一張。"
+
+#: ok_tasks/ChaosModeExperimental.py
+msgid "修改"
+msgstr "修改"
+
 #: ok_tasks/GetMengbian.py
 msgid "刷梦边"
 msgstr "刷夢邊"
@@ -493,6 +513,10 @@ msgstr "自動收集目錄"
 msgid "执行时记下看到的事件任务、卡牌、装备名称与效果，在设置页的清单里可以从目录挑选。\n只存在本机的 catalog.json，不会上传。目录够用后可以关闭，避免累积识别错误的条目。"
 msgstr "執行時記下看到的事件任務、卡牌、裝備名稱與效果，在設置頁的清單裡可以從目錄挑選。\n只存在本機的 catalog.json，不會上傳。目錄夠用後可以關閉，避免累積識別錯誤的條目。"
 
+#: src/window_recovery.py
+msgid "窗口状态"
+msgstr "窗口狀態"
+
 #: src/tasks/MyTriggerTask.py
 msgid "触发器会不断调用run方法"
 msgstr "觸發器會不斷調用run方法"
@@ -500,6 +524,78 @@ msgstr "觸發器會不斷調用run方法"
 #: src/tasks/MyTriggerTask.py
 msgid "一般根据frame来判断是否需要运行"
 msgstr "一般根據frame來判斷是否需要運行"
+
+#: src/ui/card_picker.py
+msgid "从资料库挑选卡牌"
+msgstr "從資料庫挑選卡牌"
+
+#: src/ui/card_picker.py
+msgid "先选队伍角色，只列出他们的牌；双击或选取后按「加入」。"
+msgstr "先選隊伍角色，只列出他們的牌；雙擊或選取後按「加入」。"
+
+#: src/ui/card_picker.py
+msgid "队伍角色"
+msgstr "隊伍角色"
+
+#: src/ui/card_picker.py
+msgid "（不选）"
+msgstr "（不選）"
+
+#: src/ui/card_picker.py
+msgid "中立牌"
+msgstr "中立牌"
+
+#: src/ui/card_picker.py
+msgid "其他"
+msgstr "其他"
+
+#: src/ui/card_picker.py
+msgid "诅咒、状态异常、怪物等非角色、非中立的牌"
+msgstr "詛咒、狀態異常、怪物等非角色、非中立的牌"
+
+#: src/ui/card_picker.py
+msgid "搜索名称或效果"
+msgstr "搜索名稱或效果"
+
+#: src/ui/card_picker.py
+msgid "名称"
+msgstr "名稱"
+
+#: src/ui/card_picker.py
+msgid "角色"
+msgstr "角色"
+
+#: src/ui/card_picker.py
+msgid "效果"
+msgstr "效果"
+
+#: src/ui/card_picker.py
+msgid "看过"
+msgstr "看過"
+
+#: src/ui/card_picker.py
+msgid "加入"
+msgstr "加入"
+
+#: src/ui/card_picker.py
+msgid "关闭"
+msgstr "關閉"
+
+#: src/ui/card_picker.py
+msgid "请先选择队伍角色。"
+msgstr "請先選擇隊伍角色。"
+
+#: src/ui/card_picker.py
+msgid "没有符合搜索的卡牌。"
+msgstr "沒有符合搜索的卡牌。"
+
+#: src/ui/card_picker.py
+msgid "选一列查看截图"
+msgstr "選一列查看截圖"
+
+#: src/ui/card_picker.py
+msgid "还没看过这张牌，没有截图"
+msgstr "還沒看過這張牌，沒有截圖"
 
 #: src/ui/catalog_dialog.py
 msgid "任务内容"
@@ -512,14 +608,6 @@ msgstr "來源"
 #: src/ui/catalog_dialog.py
 msgid "出现次数"
 msgstr "出現次數"
-
-#: src/ui/catalog_dialog.py
-msgid "名称"
-msgstr "名稱"
-
-#: src/ui/catalog_dialog.py
-msgid "效果"
-msgstr "效果"
 
 #: src/ui/catalog_dialog.py
 msgid "类型"
@@ -538,14 +626,6 @@ msgid "双击或选取后按「加入」；目录是执行时自动记下的，�
 msgstr "雙擊或選取後按「加入」；目錄是執行時自動記下的，次數越多越可靠。"
 
 #: src/ui/catalog_dialog.py
-msgid "搜索名称或效果"
-msgstr "搜索名稱或效果"
-
-#: src/ui/catalog_dialog.py
-msgid "加入"
-msgstr "加入"
-
-#: src/ui/catalog_dialog.py
 msgid "从目录删除"
 msgstr "從目錄刪除"
 
@@ -554,20 +634,12 @@ msgid "删除识别错误的条目；之后再看到还会重新记下"
 msgstr "刪除識別錯誤的條目；之後再看到還會重新記下"
 
 #: src/ui/catalog_dialog.py
-msgid "关闭"
-msgstr "關閉"
-
-#: src/ui/catalog_dialog.py
 msgid "目录还没有资料：开着「自动收集目录」跑几局，看到的项目会自动记在这里。"
 msgstr "目錄還沒有資料：開著「自動收集目錄」跑幾局，看到的項目會自動記在這裡。"
 
 #: src/ui/catalog_dialog.py
 msgid "没有符合搜索的项目。"
 msgstr "沒有符合搜索的項目。"
-
-#: src/ui/catalog_dialog.py
-msgid "选一列查看截图"
-msgstr "選一列查看截圖"
 
 #: src/ui/catalog_dialog.py
 msgid "这一项没有截图"
