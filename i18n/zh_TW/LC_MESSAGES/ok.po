@@ -1,0 +1,714 @@
+# ok-kes 繁體中文介面翻譯，由 tools/update_zh_tw_po.py 產生。
+# 直接修改 msgstr 即可手動修正；改完重跑該腳本重新編譯 ok.mo，手動修正不會被覆蓋。
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_TW\n"
+
+#: ok_tasks/ChaosMode.py
+msgid "自动卡厄思模式"
+msgstr "自動卡厄思模式"
+
+#: ok_tasks/ChaosMode.py
+msgid "1. 请主动打开游戏内自动战斗和自动剧情功能。\n2. 国际服玩家请将本模式配置中的\"游戏语言\"设置为繁体中文。"
+msgstr "1. 請主動打開遊戲內自動戰鬥和自動劇情功能。\n2. 國際服玩家請將本模式配置中的\"遊戲語言\"設置為繁體中文。"
+
+#: ok_tasks/ChaosMode.py
+msgid "配置操作"
+msgstr "配置操作"
+
+#: ok_tasks/ChaosMode.py
+msgid "游戏语言"
+msgstr "遊戲語言"
+
+#: ok_tasks/ChaosMode.py
+msgid "刷存档主战员"
+msgstr "刷存檔主戰員"
+
+#: ok_tasks/ChaosMode.py
+msgid "存储数据保存上限大于多少"
+msgstr "存儲數據保存上限大於多少"
+
+#: ok_tasks/ChaosMode.py
+msgid "保留大于多少TB的存档"
+msgstr "保留大於多少TB的存檔"
+
+#: ok_tasks/ChaosMode.py
+msgid "领取奖励(只使用验证卡)"
+msgstr "領取獎勵(只使用驗證卡)"
+
+#: ok_tasks/ChaosMode.py
+msgid "任务优先级"
+msgstr "任務優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "拉黑任务"
+msgstr "拉黑任務"
+
+#: ok_tasks/ChaosMode.py
+msgid "闪光优先级"
+msgstr "閃光優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "移除卡牌列表"
+msgstr "移除卡牌列表"
+
+#: ok_tasks/ChaosMode.py
+msgid "闪光卡牌列表"
+msgstr "閃光卡牌列表"
+
+#: ok_tasks/ChaosMode.py
+msgid "复制卡牌列表"
+msgstr "複製卡牌列表"
+
+#: ok_tasks/ChaosMode.py
+msgid "需要冥想的卡牌"
+msgstr "需要冥想的卡牌"
+
+#: ok_tasks/ChaosMode.py
+msgid "多少信用点以上冥想"
+msgstr "多少信用點以上冥想"
+
+#: ok_tasks/ChaosMode.py
+msgid "商店刷新信用点阈值"
+msgstr "商店刷新信用點閾值"
+
+#: ok_tasks/ChaosMode.py
+msgid "装备1号位优先级"
+msgstr "裝備1號位優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "装备2号位优先级"
+msgstr "裝備2號位優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "装备3号位优先级"
+msgstr "裝備3號位優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "卡牌奖励优先级"
+msgstr "卡牌獎勵優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "指定记忆卡牌"
+msgstr "指定記憶卡牌"
+
+#: ok_tasks/ChaosMode.py
+msgid "首层刷特定闪光"
+msgstr "首層刷特定閃光"
+
+#: ok_tasks/ChaosMode.py
+msgid "刷空档"
+msgstr "刷空檔"
+
+#: ok_tasks/ChaosMode.py
+msgid "优先使用金币治疗"
+msgstr "優先使用金幣治療"
+
+#: ok_tasks/ChaosMode.py
+msgid "治疗崩溃"
+msgstr "治療崩潰"
+
+#: ok_tasks/ChaosMode.py
+msgid "优先移除基础牌"
+msgstr "優先移除基礎牌"
+
+#: ok_tasks/ChaosMode.py
+msgid "进入商店"
+msgstr "進入商店"
+
+#: ok_tasks/ChaosMode.py
+msgid "指定面具卡牌"
+msgstr "指定面具卡牌"
+
+#: ok_tasks/ChaosMode.py
+msgid "面具卡牌刻印"
+msgstr "面具卡牌刻印"
+
+#: ok_tasks/ChaosMode.py
+msgid "刷初始卡牌"
+msgstr "刷初始卡牌"
+
+#: ok_tasks/ChaosMode.py
+msgid "只打第一层"
+msgstr "只打第一層"
+
+#: ok_tasks/ChaosMode.py
+msgid "路线优先级"
+msgstr "路線優先級"
+
+#: ok_tasks/ChaosMode.py
+msgid "几轮后停止(0为不停止)"
+msgstr "幾輪後停止(0為不停止)"
+
+#: ok_tasks/ChaosMode.py
+msgid "第几层boss前自动暂停"
+msgstr "第幾層boss前自動暫停"
+
+#: ok_tasks/ChaosMode.py
+msgid "简体中文"
+msgstr "簡體中文"
+
+#: ok_tasks/ChaosMode.py
+msgid "繁体中文"
+msgstr "繁體中文"
+
+#: ok_tasks/ChaosMode.py
+msgid "导入配置码"
+msgstr "導入配置碼"
+
+#: ok_tasks/ChaosMode.py
+msgid "导出配置码"
+msgstr "導出配置碼"
+
+#: ok_tasks/ChaosMode.py
+msgid "热门配置"
+msgstr "熱門配置"
+
+#: ok_tasks/ChaosMode.py
+msgid "保存配置"
+msgstr "保存配置"
+
+#: ok_tasks/ChaosMode.py
+msgid "切换配置"
+msgstr "切換配置"
+
+#: ok_tasks/ChaosMode.py
+msgid "不暂停"
+msgstr "不暫停"
+
+#: ok_tasks/ChaosMode.py
+msgid "国际服请设置为繁体中文"
+msgstr "國際服請設置為繁體中文"
+
+#: ok_tasks/ChaosMode.py
+msgid "卡牌名称和描述无需完整填写，输入几个关键字即可，但顺序须与游戏原文一致。"
+msgstr "卡牌名稱和描述無需完整填寫，輸入幾個關鍵字即可，但順序須與遊戲原文一致。"
+
+#: ok_tasks/ChaosMode.py
+msgid "填写目标卡牌名称后反复刷新初始卡牌；不能与“刷空档”同时使用。"
+msgstr "填寫目標卡牌名稱後反覆刷新初始卡牌；不能與“刷空檔”同時使用。"
+
+#: ok_tasks/ChaosMode.py
+msgid "初始任务必须包含“移除2张”，否则重新开始；不能与“刷初始卡牌”同时使用。"
+msgstr "初始任務必須包含“移除2張”，否則重新開始；不能與“刷初始卡牌”同時使用。"
+
+#: ok_tasks/ChaosMode.py
+msgid "默认刷闪光优先级第一张，可刷神闪，第一层没刷出自动逃脱"
+msgstr "默認刷閃光優先級第一張，可刷神閃，第一層沒刷出自動逃脫"
+
+#: ok_tasks/ChaosMode.py
+msgid "德朗商店免费刷新次数用完后，仅当信用点大于该值且足够支付刷新价格时才付费刷新。"
+msgstr "德朗商店免費刷新次數用完後，僅當信用點大於該值且足夠支付刷新價格時才付費刷新。"
+
+#: ok_tasks/GetMengbian.py
+msgid "刷梦边"
+msgstr "刷夢邊"
+
+#: ok_tasks/GetMengbian.py
+msgid "梦边"
+msgstr "夢邊"
+
+#: ok_tasks/SortieMode.py
+msgid "自动出击模式"
+msgstr "自動出擊模式"
+
+#: ok_tasks/SortieMode.py
+msgid "1. 自动战斗依赖按键识别，请在游戏设置中打开快捷键显示，提升出牌准确率。\n2. 国际服玩家请将本模式配置中的\"游戏语言\"设置为繁体中文。"
+msgstr "1. 自動戰鬥依賴按鍵識別，請在遊戲設置中打開快捷鍵顯示，提升出牌準確率。\n2. 國際服玩家請將本模式配置中的\"遊戲語言\"設置為繁體中文。"
+
+#: ok_tasks/SortieMode.py
+msgid "出战主战员优先级"
+msgstr "出戰主戰員優先級"
+
+#: ok_tasks/SortieMode.py
+msgid "主战员优先级"
+msgstr "主戰員優先級"
+
+#: ok_tasks/SortieMode.py
+msgid "领取奖励"
+msgstr "領取獎勵"
+
+#: ok_tasks/SortieMode.py
+msgid "出牌优先级"
+msgstr "出牌優先級"
+
+#: ok_tasks/SortieMode.py
+msgid "获得卡牌优先级"
+msgstr "獲得卡牌優先級"
+
+#: ok_tasks/SortieMode.py
+msgid "丢弃卡牌优先级"
+msgstr "丟棄卡牌優先級"
+
+#: ok_tasks/SortieMode.py
+msgid "拉黑主战员"
+msgstr "拉黑主戰員"
+
+#: ok_tasks/SortieMode.py
+msgid "生命值大于多少优先闪光(百分比)"
+msgstr "生命值大於多少優先閃光(百分比)"
+
+#: ok_tasks/StoryMode.py
+msgid "半自动剧情模式"
+msgstr "半自動劇情模式"
+
+#: ok_tasks/StoryMode.py
+msgid "1.剧情内战斗关卡可手动开启出击模式调用自动战斗功能。\n2. 遇到卡厄思关卡请手动打开卡厄思模式。\n3. 剧情战斗关卡队伍需手动配置"
+msgstr "1.劇情內戰鬥關卡可手動開啟出擊模式調用自動戰鬥功能。\n2. 遇到卡厄思關卡請手動打開卡厄思模式。\n3. 劇情戰鬥關卡隊伍需手動配置"
+
+#: ok_tasks/TestTrigger.py
+msgid "测试trigger"
+msgstr "測試trigger"
+
+#: ok_tasks/config_sync.py
+msgid "热门配置不可用"
+msgstr "熱門配置不可用"
+
+#: ok_tasks/config_sync.py
+msgid "请先在左下角设置页中开启「配置上传」功能，才能使用热门配置。\n\n开启后，您可以浏览和下载其他高胜率玩家分享的配置。"
+msgstr "請先在左下角設置頁中開啟「配置上傳」功能，才能使用熱門配置。\n\n開啟後，您可以瀏覽和下載其他高勝率玩家分享的配置。"
+
+#: ok_tasks/config_sync.py
+msgid "卡厄思模式"
+msgstr "卡厄思模式"
+
+#: ok_tasks/config_sync.py
+msgid "出击模式"
+msgstr "出擊模式"
+
+#: ok_tasks/config_sync.py
+msgid "排序方式："
+msgstr "排序方式："
+
+#: ok_tasks/config_sync.py
+msgid "按胜率降序"
+msgstr "按勝率降序"
+
+#: ok_tasks/config_sync.py
+msgid "按使用人数降序"
+msgstr "按使用人數降序"
+
+#: ok_tasks/config_sync.py
+msgid "语言："
+msgstr "語言："
+
+#: ok_tasks/config_sync.py
+msgid "不限"
+msgstr "不限"
+
+#: ok_tasks/config_sync.py
+msgid "出战主战员："
+msgstr "出戰主戰員："
+
+#: ok_tasks/config_sync.py
+msgid "刷存档主战员："
+msgstr "刷存檔主戰員："
+
+#: ok_tasks/config_sync.py
+msgid "当前版本："
+msgstr "當前版本："
+
+#: ok_tasks/config_sync.py
+msgid "（从源代码运行，没有正式版本号）"
+msgstr "（從源代碼運行，沒有正式版本號）"
+
+#: ok_tasks/config_sync.py
+msgid "正在加载热门配置，请稍候..."
+msgstr "正在加載熱門配置，請稍候..."
+
+#: ok_tasks/config_sync.py
+msgid "刷新"
+msgstr "刷新"
+
+#: ok_tasks/config_sync.py
+msgid "应用所选配置"
+msgstr "應用所選配置"
+
+#: ok_tasks/config_sync.py
+msgid "取消"
+msgstr "取消"
+
+#: ok_tasks/config_sync.py
+msgid "暂无热门配置数据（至少需要5场有效数据才会被统计）"
+msgstr "暫無熱門配置數據（至少需要5場有效數據才會被統計）"
+
+#: ok_tasks/config_sync.py
+msgid "胜率"
+msgstr "勝率"
+
+#: ok_tasks/config_sync.py
+msgid "使用人数"
+msgstr "使用人數"
+
+#: ok_tasks/config_sync.py
+msgid "语言"
+msgstr "語言"
+
+#: ok_tasks/config_sync.py
+msgid "版本"
+msgstr "版本"
+
+#: ok_tasks/config_sync.py
+msgid "主战员"
+msgstr "主戰員"
+
+#: ok_tasks/config_sync.py
+msgid "确认应用"
+msgstr "確認應用"
+
+#: ok_tasks/config_sync.py
+msgid "将应用所选配置"
+msgstr "將應用所選配置"
+
+#: ok_tasks/config_sync.py
+msgid "当前配置将被覆盖。"
+msgstr "當前配置將被覆蓋。"
+
+#: ok_tasks/config_sync.py
+msgid "是否继续？"
+msgstr "是否繼續？"
+
+#: ok_tasks/config_sync.py
+msgid "导入成功"
+msgstr "導入成功"
+
+#: ok_tasks/config_sync.py
+msgid "热门配置已成功应用！"
+msgstr "熱門配置已成功應用！"
+
+#: ok_tasks/config_sync.py
+msgid "导入失败"
+msgstr "導入失敗"
+
+#: ok_tasks/config_sync.py
+msgid "配置解析失败，请重试。"
+msgstr "配置解析失敗，請重試。"
+
+#: ok_tasks/utils.py
+msgid "当前信用点"
+msgstr "當前信用點"
+
+#: ok_tasks/utils.py
+msgid "版本号"
+msgstr "版本號"
+
+#: ok_tasks/utils.py
+msgid "所处层数，节点，类型"
+msgstr "所處層數，節點，類型"
+
+#: ok_tasks/utils.py
+msgid "是否到达关底boss"
+msgstr "是否到達關底boss"
+
+#: ok_tasks/utils.py
+msgid "是否进入关底boss战斗"
+msgstr "是否進入關底boss戰鬥"
+
+#: ok_tasks/utils.py
+msgid "是否已逃脱"
+msgstr "是否已逃脫"
+
+#: ok_tasks/utils.py
+msgid "是否已获得特定闪光"
+msgstr "是否已獲得特定閃光"
+
+#: ok_tasks/utils.py
+msgid "获取刷存档主战员头像"
+msgstr "獲取刷存檔主戰員頭像"
+
+#: ok_tasks/utils.py
+msgid "本局已移除卡牌"
+msgstr "本局已移除卡牌"
+
+#: ok_tasks/utils.py
+msgid "本局已获得中立牌"
+msgstr "本局已獲得中立牌"
+
+#: ok_tasks/utils.py
+msgid "装备信息"
+msgstr "裝備信息"
+
+#: ok_tasks/utils.py
+msgid "当前胜率"
+msgstr "當前勝率"
+
+#: src/config.py
+msgid "配置上传"
+msgstr "配置上傳"
+
+#: src/config.py
+msgid "是否上传配置"
+msgstr "是否上傳配置"
+
+#: src/config.py
+msgid "开启后每5分钟自动上传匿名的配置信息和胜率，帮助统计热门配置。\n不上传任何个人信息、游戏账号、截图、IP地址等隐私数据。\n仅上传配置内容和胜率统计数据。"
+msgstr "開啟後每5分鐘自動上傳匿名的配置信息和勝率，幫助統計熱門配置。\n不上傳任何個人信息、遊戲賬號、截圖、IP地址等隱私數據。\n僅上傳配置內容和勝率統計數據。"
+
+#: src/config.py
+msgid "OCR设置"
+msgstr "OCR設置"
+
+#: src/config.py
+msgid "OCR后端"
+msgstr "OCR後端"
+
+#: src/config.py
+msgid "自动"
+msgstr "自動"
+
+#: src/config.py
+msgid "自动模式仅在内存不少于12GB的Intel设备上使用OpenVINO，其他设备使用ONNX Runtime。修改后重启程序生效。"
+msgstr "自動模式僅在內存不少於12GB的Intel設備上使用OpenVINO，其他設備使用ONNX Runtime。修改後重啟程序生效。"
+
+#: src/config.py
+msgid "导航设置"
+msgstr "導航設置"
+
+#: src/config.py
+msgid "卡厄思入口"
+msgstr "卡厄思入口"
+
+#: src/config.py
+msgid "零号系统"
+msgstr "零號系統"
+
+#: src/config.py
+msgid "赛季卡厄思"
+msgstr "賽季卡厄思"
+
+#: src/config.py
+msgid "卡厄思模式在大厅时要进入哪种卡厄思。赛季卡厄思从大厅右下角的赛季入口进入。\n已经在零号系统或赛季卡厄思页面里启动时，不受此设置影响。"
+msgstr "卡厄思模式在大廳時要進入哪種卡厄思。賽季卡厄思從大廳右下角的賽季入口進入。\n已經在零號系統或賽季卡厄思頁面裡啟動時，不受此設置影響。"
+
+#: src/tasks/MyTriggerTask.py
+msgid "触发器会不断调用run方法"
+msgstr "觸發器會不斷調用run方法"
+
+#: src/tasks/MyTriggerTask.py
+msgid "一般根据frame来判断是否需要运行"
+msgstr "一般根據frame來判斷是否需要運行"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Configuration Demo Task"
+msgstr "配置演示任務"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Demonstrates every configuration widget for English to Chinese translation."
+msgstr "演示英譯中任務的全部配置控件。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Drop Down Config"
+msgstr "下拉框配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Boolean Config"
+msgstr "bool配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Integer Config"
+msgstr "整數配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Float Config"
+msgstr "浮點數配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "String Config"
+msgstr "字符串配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Text Edit Config"
+msgstr "多行文本配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Folder Selector Config"
+msgstr "文件夾選擇配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "File Selector Config"
+msgstr "文件選擇配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "List Config"
+msgstr "列表配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Drop Down Options Config"
+msgstr "下拉框選項配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Multi Selection Config"
+msgstr "多選配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Sub Boolean Config"
+msgstr "子bool配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Sub String Config"
+msgstr "子字符串配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Sub Float Config"
+msgstr "子浮點數配置"
+
+#: src/config.py
+msgid "Game Hotkey Config"
+msgstr "遊戲快捷鍵配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Button Config"
+msgstr "按鈕配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Button Options Config"
+msgstr "按鈕選項配置"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Drop-down configuration with translated option values."
+msgstr "帶有已翻譯選項值的下拉框配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Single-line string configuration with a translated value."
+msgstr "帶有已翻譯值的單行字符串配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Multi-line string configuration with a translated value."
+msgstr "帶有已翻譯值的多行字符串配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Folder selector configuration that stores the selected folder path."
+msgstr "保存所選文件夾路徑的文件夾選擇配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "File selector configuration with an optional file filter."
+msgstr "帶有可選文件過濾器的文件選擇配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Dropdown option list restricted to available translated values."
+msgstr "僅可從已翻譯可用值中選擇的下拉框選項列表。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Open the shared global configuration example."
+msgstr "打開共享的全局配置示例。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Button configuration that displays all current values."
+msgstr "顯示全部當前配置值的按鈕配置。"
+
+#: src/tasks/MyOneTimeTask.py
+msgid "Button configuration with multiple action buttons."
+msgstr "帶有多個操作按鈕的按鈕配置。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Drop Down Value 1"
+msgstr "下拉框值 1"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Drop Down Value 2"
+msgstr "下拉框值 2"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Select Demo Folder"
+msgstr "選擇演示文件夾"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Select Demo File"
+msgstr "選擇演示文件"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Multi Selection Value 1"
+msgstr "多選值 1"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Multi Selection Value 2"
+msgstr "多選值 2"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Multi Selection Value 3"
+msgstr "多選值 3"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Button Value"
+msgstr "按鈕值"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Show Config Values"
+msgstr "顯示配置值"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Show Notification"
+msgstr "顯示通知"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Button notification displayed."
+msgstr "已顯示按鈕通知。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Configuration values displayed."
+msgstr "已顯示配置值。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "String Value"
+msgstr "字符串值"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Text Edit Value"
+msgstr "多行文本值"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "List Value 1"
+msgstr "列表值 1"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "List Value 2"
+msgstr "列表值 2"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Sub String Value"
+msgstr "子字符串值"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Available Drop Down Value 1"
+msgstr "可用下拉框值 1"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Available Drop Down Value 2"
+msgstr "可用下拉框值 2"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Available Drop Down Value 3"
+msgstr "可用下拉框值 3"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "True"
+msgstr "bool值 True"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "False"
+msgstr "bool值 False"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Select one of the available drop-down values."
+msgstr "請選擇可用的下拉框值之一。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Select only available multi-selection values."
+msgstr "請只選擇可用的多選值。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "Select only available drop-down option values."
+msgstr "請只選擇可用的下拉框選項值。"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "export_config"
+msgstr "導出配置"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "import_config"
+msgstr "導入配置"
+
+#: i18n/zh_CN/LC_MESSAGES/ok.po
+msgid "hottest_config"
+msgstr "熱門配置"
