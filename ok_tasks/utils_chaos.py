@@ -26,6 +26,7 @@ from utils import (
     handle_story_dialogue,
 )
 from navigation import handle_chaos_navigation
+from dialogue import mark_battle
 import guard
 
 from preset_deck import (
@@ -505,6 +506,7 @@ def handle_battle_auto_check(task: TriggerTask):
     box = find_box_at_point(task, 0.512, 0.969)
     if not (box and re.search(r'\d+/10', box.name)):
         return False
+    mark_battle(task)
 
     attack_box = task.find_one(
         feature_name="start_attack_event",

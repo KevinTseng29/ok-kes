@@ -165,6 +165,29 @@ class TestAdvance(DialogueTestCase):
         self.assertFalse(advance_dialogue_box(FakeTask(MAP_DIALOGUE)))
 
 
+# 夜間日誌裡被誤點過的文字：戰鬥提示、選卡頁提示、戰鬥中角色台詞
+BATTLE_HINT = boxes([('预测将有强力攻击。请注意。', 0.38, 0.30, 0.62, 0.34)])
+CARD_HINT = boxes([('长按卡牌以查看资讯。', 0.42, 0.92, 0.58, 0.95)])
+BATTLE_BARK = boxes([('如预期般攻击相当有效率。', 0.40, 0.20, 0.60, 0.24)])
+
+
+class TestNotDialogue(DialogueTestCase):
+    def test_ui_hints_ignored(self):
+        for texts in (BATTLE_HINT, CARD_HINT):
+            self.assertIsNone(dialogue_lines(FakeTask(texts)))
+
+    def test_quiet_right_after_battle(self):
+        task = FakeTask(BATTLE_BARK)
+        dialogue.mark_battle(task)
+        self.now += 7
+        self.assertFalse(advance_dialogue_box(task))
+        self.assertEqual(task.clicks, [])
+        # 離開戰鬥一段時間後的台詞照常推進
+        self.now += 2
+        self.assertTrue(advance_dialogue_box(task))
+        self.assertEqual(len(task.clicks), 1)
+
+
 AUTO_CHAT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'auto_chat')
 
 

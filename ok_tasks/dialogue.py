@@ -12,6 +12,9 @@ handle_skip_story 認不到；卡住兜底又不再亂點，對話就停住。�
 - 兩次點擊至少間隔 click_interval 秒，讓遊戲顯示下一句。
 - 點到新的一句就清掉 guard 的點擊紀錄，長對話不會被當成原地打轉；
   點了還是同一句（沒反應）就不清，交給 guard 回首頁或停止。
+- 戰鬥中不點：各模式的戰鬥頁處理呼叫 mark_battle，之後 battle_quiet 秒內不推進。敵方回合、
+  動畫時底部手牌數會暫時消失，戰鬥頁沒認到，畫面上的戰鬥提示與角色台詞會被誤當成對話框。
+- 「長按卡牌以查看資訊」這類介面提示（ui_hints）不算台詞。
 
 另外放右上角自動對話按鈕的狀態判斷（auto_chat_speed），讓它停在最快倍速。
 
@@ -33,6 +36,10 @@ class DialogueSettings:
     min_han: int = 3
     # 同一塊的行：上下間距的上限（畫面比例）
     max_line_gap: float = 0.04
+    # 最近這麼多秒內看過戰鬥頁就不點台詞
+    battle_quiet: float = 8
+    # 介面提示，不是台詞（OCR 文字已轉簡體）
+    ui_hints: tuple = ('长按卡牌', '没有可', '预测将有')
 
 
 DIALOGUE = DialogueSettings()
@@ -63,7 +70,8 @@ def _blocks(boxes, height):
 
 def dialogue_lines(task):
     """畫面上只有一段台詞時，回傳由上到下的文字框；否則回傳 None。"""
-    lines = [b for b in task.all_texts or [] if len(_HAN.findall(b.name or '')) >= DIALOGUE.min_han]
+    lines = [b for b in task.all_texts or [] if len(_HAN.findall(b.name or '')) >= DIALOGUE.min_han
+             and not any(hint in b.name for hint in DIALOGUE.ui_hints)]
     blocks = _blocks(lines, task.height)
     if len(blocks) != 1:
         return None
@@ -98,9 +106,16 @@ def auto_chat_speed(icon):
     return None
 
 
+def mark_battle(task):
+    """戰鬥頁處理認到戰鬥時呼叫；之後 battle_quiet 秒內不推進對話。"""
+    task._battle_seen_time = time.time()
+
+
 def advance_dialogue_box(task):
     """是對話框就點台詞讓它前進，回傳 True；不是回傳 False。"""
     if not DIALOGUE.enabled:
+        return False
+    if time.time() - getattr(task, '_battle_seen_time', 0) < DIALOGUE.battle_quiet:
         return False
     lines = dialogue_lines(task)
     if not lines:

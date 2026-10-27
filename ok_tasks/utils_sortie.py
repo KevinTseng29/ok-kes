@@ -29,6 +29,7 @@ from utils import (
 )
 from utils_chaos import handle_archive_target_member
 from navigation import handle_sortie_navigation
+from dialogue import mark_battle
 
 import re
 import random
@@ -443,6 +444,7 @@ def handle_battle_page(task: TriggerTask):
     hand_count = _read_hand_count(task)
     if hand_count is None:
         return False
+    mark_battle(task)
 
     # 如果已到达最终boss节点，标记boss战状态
     if hasattr(task, 'node_status') and task.node_status.get('reach_final_boss', False):
@@ -759,6 +761,7 @@ def handle_battle_hand_select(task: TriggerTask):
     hand_box = find_box_at_point(task, 0.505, 0.971)
     if not (hand_box and re.search(r'\d+/10', hand_box.name)):
         return False
+    mark_battle(task)
 
     need = int(m.group(1))
     task.log_info(f"检测到战斗中手牌选择页面，需选择{need}张卡牌，随机选择")
