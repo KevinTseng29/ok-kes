@@ -1,4 +1,5 @@
 from ok import TriggerTask, og
+from humanize import HumanizeMixin
 
 import utils_chaos
 from config_io import (
@@ -16,7 +17,7 @@ from utils import (
     _simplify_texts,
 )
 
-class ChaosMode(TriggerTask):
+class ChaosMode(HumanizeMixin, TriggerTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,9 +1,10 @@
 from ok import TriggerTask, og
+from humanize import HumanizeMixin
 
 import utils_story
 from utils import _simplify_texts
 
-class StoryMode(TriggerTask):
+class StoryMode(HumanizeMixin, TriggerTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,9 +1,10 @@
 from ok import TriggerTask
+from humanize import HumanizeMixin
 
 from utils_sortie import handle_secret_enemy
 
 
-class TestTrigger(TriggerTask):
+class TestTrigger(HumanizeMixin, TriggerTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "测试trigger"

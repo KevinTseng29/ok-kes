@@ -1,7 +1,8 @@
 from ok import BaseTask
+from humanize import HumanizeMixin
 import re
 
-class GetMengbian(BaseTask):
+class GetMengbian(HumanizeMixin, BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "刷梦边"
