@@ -13,6 +13,8 @@ handle_skip_story 認不到；卡住兜底又不再亂點，對話就停住。�
 - 點到新的一句就清掉 guard 的點擊紀錄，長對話不會被當成原地打轉；
   點了還是同一句（沒反應）就不清，交給 guard 回首頁或停止。
 
+另外放右上角自動對話按鈕的狀態判斷（auto_chat_speed），讓它停在最快倍速。
+
 本模組不依賴 ok 套件，方便單元測試。
 """
 import re
@@ -71,6 +73,29 @@ def dialogue_lines(task):
     if not any(_SENTENCE_END.search(_clean(b.name)) for b in block):
         return None
     return block
+
+
+def auto_chat_speed(icon):
+    """右上角自動對話按鈕（模板框內的 BGR 圖）是什麼狀態，看兩個箭頭的顏色：
+    'fast' 兩個箭頭都亮橘色（最快倍速）、'slow' 只亮第一個（一倍速）、'off' 白色（未開啟）；
+    都不像就回傳 None（找到的不是這個按鈕）。"""
+    import cv2
+
+    half = icon.shape[1] // 2
+    if half == 0 or icon.shape[0] == 0:
+        return None
+    hsv = cv2.cvtColor(icon[:, :, :3], cv2.COLOR_BGR2HSV)
+    bright = hsv[..., 2] >= 150
+    warm = bright & (hsv[..., 1] >= 50)
+    white = bright & (hsv[..., 1] < 30)
+    area = icon.shape[0] * half
+    warm_left, warm_right = int(warm[:, :half].sum()), int(warm[:, half:].sum())
+    # 實測：最快倍速右／左亮橘像素比 0.69~0.89，一倍速 0.07~0.27
+    if warm_left >= 0.1 * area:
+        return 'fast' if warm_right >= 0.5 * warm_left else 'slow'
+    if white[:, :half].sum() >= 0.1 * area and white[:, half:].sum() >= 0.1 * area:
+        return 'off'
+    return None
 
 
 def advance_dialogue_box(task):

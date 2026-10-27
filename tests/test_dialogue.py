@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 import types
@@ -162,6 +163,32 @@ class TestAdvance(DialogueTestCase):
         self.assertFalse(advance_dialogue_box(task))
         dialogue.DIALOGUE.enabled = False
         self.assertFalse(advance_dialogue_box(FakeTask(MAP_DIALOGUE)))
+
+
+AUTO_CHAT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'auto_chat')
+
+
+@unittest.skipUnless(importlib.util.find_spec('cv2'), '需要 opencv')
+class TestAutoChatSpeed(unittest.TestCase):
+    """實際截到的按鈕（1280x720 的模板框）：每點一次在 未開啟 → 一倍速 → 最快 之間循環。"""
+
+    def icon(self, name, scale=1.0):
+        import cv2
+        image = cv2.imread(os.path.join(AUTO_CHAT_DIR, name + '.png'))
+        return cv2.resize(image, None, fx=scale, fy=scale) if scale != 1.0 else image
+
+    def test_states(self):
+        expected = {'fast': 'fast', 'slow': 'slow', 'off': 'off', 'none': None}
+        for name in sorted(os.listdir(AUTO_CHAT_DIR)):
+            name = name[:-4]
+            for scale in (1.0, 1.5):  # 1920x1080 畫面的框是 1.5 倍
+                with self.subTest(name=name, scale=scale):
+                    self.assertEqual(dialogue.auto_chat_speed(self.icon(name, scale)),
+                                     expected[name.split('_')[0]])
+
+    def test_empty_icon(self):
+        import numpy as np
+        self.assertIsNone(dialogue.auto_chat_speed(np.zeros((0, 0, 3), np.uint8)))
 
 
 if __name__ == '__main__':

@@ -2103,11 +2103,16 @@ def handle_settlement(task: TriggerTask):
 
 
 def handle_story_dialogue(task: TriggerTask):
-    """事件或剧情对话：有跳过按钮就跳过，自动对话没开就点开（沿用剧情模式的处理）；
-    地图上没有按钮的对话框则点台词推进（dialogue.py），避免停在对话页不前进。"""
-    from utils_story import handle_auto_chat, handle_skip_story
+    """事件或剧情对话：有跳过按钮就跳过，自动对话没开或不是最快倍速就点到最快（沿用剧情模式的处理）；
+    已是最快倍速就等它自己播，不点台词以免打断；地图上没有按钮的对话框则点台词推进（dialogue.py），
+    避免停在对话页不前进。"""
+    from utils_story import find_auto_chat, handle_auto_chat, handle_skip_story
     from dialogue import advance_dialogue_box
-    return handle_skip_story(task) or handle_auto_chat(task) or advance_dialogue_box(task)
+    if handle_skip_story(task) or handle_auto_chat(task):
+        return True
+    if find_auto_chat(task)[1] == "fast":
+        return True
+    return advance_dialogue_box(task)
 
 
 def handle_skip(task: TriggerTask):

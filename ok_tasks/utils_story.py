@@ -1,5 +1,6 @@
 from ok import TriggerTask
 
+from dialogue import auto_chat_speed
 from utils import (
     _move_and_click,
     handle_center_confirm,
@@ -57,21 +58,36 @@ def handle_close_dialog(task: TriggerTask):
     return False
 
 
-def handle_auto_chat(task: TriggerTask):
-    """自动对话检查: 匹配任一自动对话特征，置信度低于0.96时点击开启。"""
+def find_auto_chat(task: TriggerTask):
+    """找右上角的自动对话按钮，回传 (按钮, 状态)；状态见 dialogue.auto_chat_speed，没有按钮回传 (None, None)。"""
     search_box = task.box_of_screen(0.655, 0.007, 0.996, 0.097)
+    # 一倍速的置信度最低约 0.79，低于框架默认门槛 0.8；其他图标误判都在 0.7 以下
     auto_chat = task.find_one(
-        feature_name=["autochatenable", "autochatenable2"], box=search_box
+        feature_name=["autochatenable", "autochatenable2"], box=search_box, threshold=0.75
     )
-    if auto_chat and auto_chat.confidence < 0.96:
-        task.log_info(f"自动对话未开启，当前匹配置信度: {auto_chat.confidence:.2%}，点击开启")
-        _move_and_click(
-            task,
-            (auto_chat.x + auto_chat.width / 2) / task.width,
-            (auto_chat.y + auto_chat.height / 2) / task.height,
-        )
-        return True
-    return False
+    if not auto_chat:
+        return None, None
+    icon = task.frame[auto_chat.y:auto_chat.y + auto_chat.height, auto_chat.x:auto_chat.x + auto_chat.width]
+    state = auto_chat_speed(icon)
+    return (auto_chat, state) if state else (None, None)
+
+
+def handle_auto_chat(task: TriggerTask):
+    """自动对话：按钮每点一次在「未开启 → 一倍速 → 最快倍速」之间循环。
+    已是最快倍速就不点；未开启或一倍速才点，点到最快为止。
+    （模板置信度会随背景浮动，最快倍速也常低于旧门槛 0.96，被当成没开而点掉，所以改看箭头颜色。）"""
+    auto_chat, state = find_auto_chat(task)
+    if state not in ("off", "slow"):
+        return False
+    task.log_info(f"自动对话{'未开启' if state == 'off' else '为一倍速'}，点击切到最快倍速")
+    _move_and_click(
+        task,
+        (auto_chat.x + auto_chat.width / 2) / task.width,
+        (auto_chat.y + auto_chat.height / 2) / task.height,
+    )
+    # 等按钮切换完再看下一帧，避免动画中途又点一次跳回未开启
+    task.sleep(1)
+    return True
 
 
 def handle_view_event(task: TriggerTask):
