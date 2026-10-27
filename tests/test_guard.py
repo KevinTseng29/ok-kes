@@ -2,6 +2,8 @@ import os
 import shutil
 import sys
 import tempfile
+import time
+import types
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ok_tasks'))
@@ -205,6 +207,149 @@ class TestSaveScene(GuardTestCase):
         self.task.run()
         self.assertIsNone(save_scene(self.task, 'stuck'))
         self.assertTrue(any('保存錯誤現場失敗' in c[1] for c in self.task.kinds('info')))
+
+
+class FakeBox:
+    def __init__(self, name):
+        self.name = name
+
+
+class WatchTask(FakeTask):
+    """有 watch_progress 的任務：run() 依 plan 點擊或改變畫面文字。"""
+    watch_progress = True
+
+    def __init__(self):
+        super().__init__()
+        self.enabled = True
+        self.all_texts = [FakeBox('主战员配置'), FakeBox('进入')]
+        self.plan = []
+
+    def click(self, x, y, **kwargs):
+        guard.record_click(self, x, y)
+        self.calls.append(('click', round(x, 3), round(y, 3)))
+
+    def disable(self):
+        self.enabled = False
+        self.calls.append(('disable',))
+
+    @guarded_run
+    def run(self):
+        if self.plan:
+            self.plan.pop(0)(self)
+        return 'ok'
+
+
+class TestWatch(GuardTestCase):
+    def setUp(self):
+        super().setUp()
+        self.now = 1000.0
+        guard.time = types.SimpleNamespace(time=lambda: self.now, strftime=time.strftime,
+                                           localtime=time.localtime)
+        self.addCleanup(setattr, guard, 'time', time)
+        self.task = WatchTask()
+
+    def tick(self, action=None, dt=1.0):
+        self.now += dt
+        if action:
+            self.task.plan.append(action)
+        self.task.run()
+
+    def homes(self):
+        return [c for c in self.task.calls if c == ('click', *guard.GUARD.home_button)]
+
+    def test_click_loop_rules(self):
+        same = [(1, 1)] * 12 + [(2, 2), (3, 3), (4, 4)]
+        pair = [(1, 1)] * 6 + [(2, 2)] * 6 + [(3, 3), (4, 4), (5, 5)]
+        back_and_forth = [(1, 1), (1, 1), (2, 2)] * 5           # 進入、進入、以太不足取消
+        varied = [(i, i) for i in range(15)]
+        self.assertIn('同一處', guard.click_loop(same))
+        self.assertIn('兩處之間', guard.click_loop(pair))
+        self.assertIn('10＋5', guard.click_loop(back_and_forth))
+        self.assertEqual(guard.click_loop(varied), '')
+        self.assertEqual(guard.click_loop(back_and_forth[:14]), '')
+
+    def test_jittered_clicks_count_as_same_place(self):
+        for x in (0.718, 0.721, 0.725):
+            guard.record_click(self.task, x, 0.914)
+        self.assertEqual(len(set(self.task._guard_state.clicks)), 1)
+
+    def test_loop_goes_home_then_stops(self):
+        enter, cancel = (lambda t: t.click(0.719, 0.914)), (lambda t: t.click(0.347, 0.803))
+        for action in [enter, enter, cancel] * 5:
+            self.tick(action)
+        self.assertEqual(len(self.homes()), 1)
+        self.assertTrue(self.scenes()[-1].endswith('_loop'))
+        self.assertTrue(self.task.enabled)
+        # 回首頁那一下不算進紀錄；回來又打轉就停止
+        for action in [enter, enter, cancel] * 5:
+            self.tick(action, dt=5)
+        self.assertEqual(self.task.calls[-1], ('disable',))
+        self.assertTrue(any('停止任務' in c[1] for c in self.task.kinds('info')))
+
+    def test_loop_after_recover_window_goes_home_again(self):
+        enter = lambda t: t.click(0.719, 0.914)  # noqa: E731
+        for _ in range(15):
+            self.tick(enter)
+        self.now += guard.GUARD.recover_window + 1
+        for _ in range(15):
+            self.tick(enter)
+        self.assertEqual(len(self.homes()), 2)
+        self.assertTrue(self.task.enabled)
+
+    def test_cleared_record_is_not_a_loop(self):
+        def observe(t):
+            guard.clear_click_record(t)
+            t.click(0.762, 0.793)
+        for _ in range(30):
+            self.tick(observe)
+        self.assertEqual(self.homes(), [])
+
+    def test_no_progress_goes_home_then_stops(self):
+        for _ in range(90):  # 第一輪開始計時，第 90 輪時才過了 89 秒
+            self.tick()
+        self.assertEqual(self.homes(), [])
+        self.tick()
+        self.assertEqual(len(self.homes()), 1)
+        self.assertTrue(self.scenes()[-1].endswith('_no_progress'))
+        for _ in range(90):
+            self.tick()
+        self.assertEqual(self.task.calls[-1], ('disable',))
+
+    def test_changing_text_or_clicks_count_as_progress(self):
+        for i in range(200):
+            self.task.all_texts = [FakeBox(f'HP {i}'), FakeBox(f'回合 {i}'), FakeBox('结束')]
+            self.tick()
+        for i in range(200):
+            self.tick(lambda t, i=i: t.click(0.1 * (i % 9) + 0.05, 0.5))
+        self.assertEqual(self.homes(), [])
+
+    def test_ocr_flicker_is_not_progress(self):
+        page = ['选项一', '选项二', '选项三', '确认', '返回', '标题', '说明一', '说明二', '信用点', '生命值']
+        for i in range(91):
+            texts = list(page)
+            texts[i % len(page)] += '字'   # 每輪有一段文字讀錯
+            self.task.all_texts = [FakeBox(n) for n in texts]
+            self.tick()
+        self.assertEqual(len(self.homes()), 1)
+
+    def test_long_gap_restarts_timer(self):
+        for _ in range(60):
+            self.tick()
+        self.tick(dt=300)  # 任務暫停或其他處理接手很久
+        for _ in range(60):
+            self.tick()
+        self.assertEqual(self.homes(), [])
+
+    def test_reset_and_opt_in(self):
+        for _ in range(15):
+            self.tick(lambda t: t.click(0.5, 0.5))
+        self.assertEqual(len(self.homes()), 1)
+        guard.reset(self.task)
+        self.assertIsNone(self.task._guard_state.last_recover)
+        plain = FakeTask()
+        for _ in range(20):
+            plain.run()
+        self.assertFalse(hasattr(plain._guard_state, 'last_watch') and plain._guard_state.last_watch)
 
 
 class TestCleanScreenshots(GuardTestCase):

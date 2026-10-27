@@ -9,6 +9,7 @@ ok-script 預設的 click_box 每次都點在方框正中央、點完固定等 1
 - 操作節奏：點擊前加入反應延遲，偶爾停頓久一點；點擊後的等待時間隨機伸縮。
 - 按壓時間：PC 端（PostMessage 等）隨機化按下時間。
   MuMu（nemu_ipc）的按壓時間與滑動軌跡由框架處理，框架已採用 ALAS 的隨機按壓與貝茲曲線。
+- 每次點擊交給 guard.record_click 記錄，用來判斷是否在原地打轉。
 
 用法：任務類別把 HumanizeMixin 放在最前面繼承，例如
     class ChaosMode(HumanizeMixin, TriggerTask): ...
@@ -19,6 +20,8 @@ ok-script 預設的 click_box 每次都點在方框正中央、點完固定等 1
 
 import random
 from dataclasses import dataclass
+
+import guard
 
 
 @dataclass
@@ -166,6 +169,10 @@ class HumanizeMixin:
     def click(self, x=-1, y=-1, move_back=False, name=None, interval=-1, move=True,
               down_time=0.02, after_sleep=0, key='left', hcenter=False, vcenter=False):
         s = self._hz
+        is_pixel = not (isinstance(x, list) or _is_box(x)) and not (0 < x < 1 or 0 < y < 1) and x >= 0 and y >= 0
+        if is_pixel and self.width and self.height:
+            # 相對座標、方框都會在框架轉成像素後再呼叫一次 click，只在這一層記錄才不會重複
+            guard.record_click(self, x / self.width, y / self.height)
         passthrough = (
                 not s.enabled
                 or isinstance(x, list)

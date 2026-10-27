@@ -122,6 +122,15 @@ class TestMixin(unittest.TestCase):
         # 點擊前有反應延遲
         self.assertTrue(any(c[0] == 'sleep' for c in self.task.calls))
 
+    def test_each_click_recorded_once_for_loop_detection(self):
+        self.task.click(0.5, 0.5)            # 相對座標：框架轉像素後再進來一次
+        self.task.click_box(FakeBox(0, 0, 50, 50))
+        self.task.click(960, 540)
+        self.task.click(-1, -1)              # 目前位置，不記
+        clicks = list(self.task._guard_state.clicks)
+        self.assertEqual(len(clicks), 3)
+        self.assertEqual(clicks[0], clicks[2])
+
     def test_click_box_accepts_list_and_missing(self):
         self.task.click_box([FakeBox(0, 0, 50, 50)])
         self.assertEqual(len(self.clicks()), 1)

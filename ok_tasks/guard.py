@@ -9,6 +9,11 @@ ok-script 的執行器遇到任務丟出未處理的例外時，會直接停用�
   出錯或畫面卡住時呼叫，方便事後重現問題。依份數與總大小自動清理。
 - maybe_clean_screenshots：框架只在程式啟動時清理 screenshots/，
   這裡在執行中定期檢查，超過上限就從最舊的檔案刪起。
+- watch（任務類別設 watch_progress = True 才啟用）：參考 ALAS 的 click_record 與 stuck_record，
+  每輪 run() 之後檢查是否在原地打轉（反覆點同一兩處）或卡住（太久沒點擊、畫面文字也沒變），
+  發生時先保存現場並按回首頁；recover_window 內又發生就停止任務並通知。
+  點擊由 HumanizeMixin.click 呼叫 record_click 記錄；刻意重複點同一處的流程
+  （再次觀測、重新合成等）要呼叫 clear_click_record。
 
 用法：
     @guarded_run
@@ -21,10 +26,11 @@ ok-script 的執行器遇到任務丟出未處理的例外時，會直接停用�
 import functools
 import os
 import random
+import re
 import shutil
 import time
 import traceback
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 
 
@@ -55,6 +61,23 @@ class GuardSettings:
     screenshot_dir: str = 'screenshots'
     screenshot_max_mb: float = 300
     screenshot_check_interval: float = 3600
+    # 原地打轉（參考 ALAS 的 click_record）：最近 click_record_size 次點擊中，同一處 ≥ click_same_limit 次、
+    # 兩處各 ≥ click_pair_limit 次，或幾乎只在兩處之間來回（前兩處合計 ≥ click_two_targets_limit 次）
+    click_record_size: int = 15
+    click_same_limit: int = 12
+    click_pair_limit: int = 6
+    click_two_targets_limit: int = 14
+    # 點擊位置以這個格距（畫面比例）歸成同一處，吸收擬人化的位置抖動
+    click_grid: float = 0.03
+    # 卡住（參考 ALAS 的 stuck_record）：這麼多秒沒有點擊、畫面文字也沒明顯變化
+    stuck_timeout: float = 90
+    # 畫面文字與上次有進展時相比，相同的比例低於這個值才算有變化（避免 OCR 跳字當成變化）
+    text_same_ratio: float = 0.7
+    # 兩次檢查相隔超過這麼多秒（任務暫停、其他處理接手很久）就重新計時
+    watch_gap_reset: float = 30
+    # 打轉或卡住時先按回首頁；之後這麼多秒內又發生就停止任務
+    recover_window: float = 600
+    home_button: tuple = (0.898, 0.050)
 
 
 GUARD = GuardSettings()
@@ -69,6 +92,16 @@ class _GuardState:
         self.consecutive = 0
         self.failures = deque()
         self.last_scene = {}
+        self.reset_watch()
+
+    def reset_watch(self):
+        self.clicks = deque(maxlen=GUARD.click_record_size)
+        self.clicked = False
+        self.paused = False
+        self.last_watch = None
+        self.last_progress = None
+        self.progress_texts = set()
+        self.last_recover = None
 
 
 def _state(task):
@@ -108,9 +141,120 @@ def guarded_run(run):
                 raise
             return None
         _state(task).consecutive = 0
+        if getattr(task, 'watch_progress', False) and getattr(task, 'enabled', True):
+            try:
+                watch(task)
+            except Exception as e:
+                if _is_passthrough(e):
+                    raise
+                task.log_info(f'檢查打轉／卡住時出錯：{e}')
         return result
 
     return wrapper
+
+
+# ---------- 原地打轉與卡住 ----------
+
+def reset(task):
+    """任務重新啟動時呼叫，清掉上一次的打轉／卡住紀錄。"""
+    _state(task).reset_watch()
+
+
+def record_click(task, x, y):
+    """記下一次點擊（相對座標）；由 HumanizeMixin.click 呼叫。"""
+    if not GUARD.enabled:
+        return
+    state = _state(task)
+    if state.paused:
+        return
+    state.clicks.append((round(x / GUARD.click_grid), round(y / GUARD.click_grid)))
+    state.clicked = True
+
+
+def clear_click_record(task):
+    """刻意重複點同一處的流程（再次觀測、重新合成、重開一局）呼叫，避免被當成打轉。"""
+    _state(task).clicks.clear()
+
+
+def click_loop(clicks):
+    """依最近的點擊判斷是否在原地打轉；回傳說明文字，沒有打轉回傳空字串。"""
+    if len(clicks) < GUARD.click_record_size:
+        return ''
+    counts = [count for _, count in Counter(clicks).most_common(2)] + [0]
+    first, second = counts[0], counts[1]
+    total = len(clicks)
+    if first >= GUARD.click_same_limit:
+        return f'最近 {total} 次點擊有 {first} 次點在同一處'
+    if second >= GUARD.click_pair_limit or first + second >= GUARD.click_two_targets_limit:
+        return f'最近 {total} 次點擊都在兩處之間來回（{first}＋{second} 次）'
+    return ''
+
+
+def _text_set(task):
+    texts = set()
+    for box in getattr(task, 'all_texts', None) or []:
+        name = re.sub(r'\s+', '', getattr(box, 'name', '') or '')
+        if len(name) >= 2:
+            texts.add(name)
+    return texts
+
+
+def _texts_changed(before, after):
+    if not before and not after:
+        return False
+    same = len(before & after) / max(len(before), len(after))
+    return same < GUARD.text_same_ratio
+
+
+def watch(task):
+    """每輪 run() 之後檢查是否在原地打轉或卡住；處理了（回首頁或停止）回傳 True。"""
+    state = _state(task)
+    now = time.time()
+    texts = _text_set(task)
+    if state.last_watch is None or now - state.last_watch > GUARD.watch_gap_reset:
+        state.last_progress, state.progress_texts = now, texts
+    elif state.clicked or _texts_changed(state.progress_texts, texts):
+        state.last_progress, state.progress_texts = now, texts
+    state.last_watch = now
+    state.clicked = False
+
+    loop = click_loop(state.clicks)
+    if loop:
+        return _recover(task, 'loop', loop)
+    idle = now - state.last_progress
+    if idle >= GUARD.stuck_timeout:
+        return _recover(task, 'no_progress', f'已 {idle:.0f} 秒沒有點擊，畫面文字也沒有變化')
+    return False
+
+
+def _notify(task, message):
+    try:
+        task.log_info(message, notify=True)
+    except TypeError:
+        task.log_info(message)
+
+
+def _recover(task, reason, detail):
+    """先按回首頁；recover_window 內第二次發生就停止任務。"""
+    state = _state(task)
+    now = time.time()
+    save_scene(task, reason, detail)
+    state.clicks.clear()
+    state.last_progress, state.progress_texts = now, _text_set(task)
+    if state.last_recover is not None and now - state.last_recover < GUARD.recover_window:
+        state.last_recover = None
+        _notify(task, f'{detail}；回首頁後仍無法恢復，停止任務，請查看 {GUARD.scene_dir}/ 的現場')
+        task.disable()
+        return True
+    state.last_recover = now
+    task.log_info(f'{detail}，先點擊回首頁')
+    state.paused = True
+    try:
+        task.click(*GUARD.home_button)
+    finally:
+        state.paused = False
+    task.sleep(2)
+    return True
 
 
 def _handle_failure(task, error):

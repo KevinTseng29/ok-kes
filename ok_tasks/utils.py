@@ -1740,10 +1740,17 @@ def is_frame_stuck(task: TriggerTask, stuck_threshold_seconds=30, change_thresho
     return time.time() - task._last_change_time >= stuck_threshold_seconds
 
 
+_STUCK_RANDOM_CLICK_LIMIT = 3
+
+
 def handle_stuck_log(task: TriggerTask):
-    """画面卡住超过10秒时依次处理关闭页、特殊怪物、卡牌或未知页面。"""
+    """画面卡住超过10秒时依次处理关闭页、特殊怪物、卡牌或未知页面。
+
+    随机点卡牌或页面的兜底每次卡住最多试 _STUCK_RANDOM_CLICK_LIMIT 次，之后不再乱点，
+    交给 guard.watch 回首页或停止任务。"""
     if not is_frame_stuck(task, stuck_threshold_seconds=10):
         task._stuck_scene_saved = False
+        task._stuck_random_clicks = 0
         return False
 
     stuck_seconds = int(time.time() - task._last_change_time)
@@ -1765,6 +1772,10 @@ def handle_stuck_log(task: TriggerTask):
 
     from utils_sortie import handle_secret_enemy
     handle_secret_enemy(task)
+    random_clicks = getattr(task, '_stuck_random_clicks', 0)
+    if random_clicks >= _STUCK_RANDOM_CLICK_LIMIT:
+        task.log_info(f"画面卡住已持续{stuck_seconds}秒，随机点击已试{random_clicks}次，不再乱点")
+        return False
     cards = recognize_cards(task, page="画面卡住兜底")
     if cards:
         chosen_card = random.choice(cards)
@@ -1772,8 +1783,9 @@ def handle_stuck_log(task: TriggerTask):
             f"画面卡住兜底: 随机点击卡牌「{chosen_card['name']}」"
         )
         _move_and_click(task, chosen_card["x"], chosen_card["y"])
-    else:
-        handle_unknown_page(task)
+        task._stuck_random_clicks = random_clicks + 1
+    elif handle_unknown_page(task):
+        task._stuck_random_clicks = random_clicks + 1
     # 普通随机点屏幕兜底暂时停用。
     # click_x = random.uniform(0.059, 0.985)
     # click_y = random.uniform(0.129, 0.981)
@@ -3269,6 +3281,8 @@ def handle_event_task(task: TriggerTask):
 
     def handle_initial_node_task(description_keyword, purpose):
         """初始节点按描述选择任务；未找到目标描述时点击ESC重新开始。"""
+        # 刷初始卡牌／刷空档会反复重开，属于正常流程，不算原地打转
+        guard.clear_click_record(task)
         matched_task = next(
             (
                 task_info

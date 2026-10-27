@@ -1,4 +1,5 @@
 from ok import TriggerTask, og
+import guard
 from guard import guarded_run
 from humanize import HumanizeMixin
 
@@ -19,6 +20,8 @@ from utils import (
 
 
 class SortieMode(HumanizeMixin, TriggerTask):
+    # 原地打轉或卡住時先回首頁、再犯就停止（guard.watch）
+    watch_progress = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -100,6 +103,7 @@ class SortieMode(HumanizeMixin, TriggerTask):
             chaos.disable()
         reset_all_status(self)
         _migrate_route_boss_to_elite(self)
+        guard.reset(self)
         super().enable()
 
     def _check_upload_if_needed(self):
