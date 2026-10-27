@@ -6,7 +6,9 @@ ok-script 的執行器遇到任務丟出未處理的例外時，會直接停用�
 - guarded_run：包住 TriggerTask.run()。出錯時先記錄、保存現場，下一輪再試；
   連續失敗太多次，或短時間內累計失敗太多次，才交給框架停止任務（框架會發錯誤通知）。
 - save_scene：把最近幾輪的截圖、說明與最近的 log 存到 error_scenes/，
-  出錯或畫面卡住時呼叫，方便事後重現問題。
+  出錯或畫面卡住時呼叫，方便事後重現問題。依份數與總大小自動清理。
+- maybe_clean_screenshots：框架只在程式啟動時清理 screenshots/，
+  這裡在執行中定期檢查，超過上限就從最舊的檔案刪起。
 
 用法：
     @guarded_run
@@ -38,14 +40,21 @@ class GuardSettings:
     retry_delay: tuple = (2.0, 4.0)
     # 保留最近幾輪的截圖
     frame_buffer_size: int = 10
-    # 錯誤現場的資料夾與保留份數
+    # 錯誤現場的資料夾、保留份數與總大小上限（MB）
     scene_dir: str = 'error_scenes'
     max_scenes: int = 30
+    max_scene_mb: float = 300
+    # 現場截圖除了最後一張存 PNG，其餘存 JPG 的品質
+    jpg_quality: int = 90
     # 同一種原因多久內只保存一次現場（秒）
     scene_min_interval: float = 60
     # 一併保存的 log 檔與行數
     log_file: str = os.path.join('logs', 'ok-script.log')
     log_tail_lines: int = 300
+    # 框架截圖資料夾（src/config.py 的 screenshots_folder）的大小上限（MB）與檢查間隔（秒）
+    screenshot_dir: str = 'screenshots'
+    screenshot_max_mb: float = 300
+    screenshot_check_interval: float = 3600
 
 
 GUARD = GuardSettings()
@@ -90,6 +99,7 @@ def guarded_run(run):
     def wrapper(task, *args, **kwargs):
         if not GUARD.enabled:
             return run(task, *args, **kwargs)
+        maybe_clean_screenshots(task)
         try:
             record_frame(task)
             result = run(task, *args, **kwargs)
@@ -148,20 +158,22 @@ def save_scene(task, reason, detail=''):
     try:
         os.makedirs(folder, exist_ok=True)
         for i, (t, frame) in enumerate(frames):
-            name = f'{i:02d}_{time.strftime("%H%M%S", time.localtime(t))}_{int(t % 1 * 1000):03d}.png'
+            # 最後一張最接近出錯當下，存 PNG 保留原始像素以便重跑 OCR；其餘存 JPG 省空間
+            ext = 'png' if i == len(frames) - 1 else 'jpg'
+            name = f'{i:02d}_{time.strftime("%H%M%S", time.localtime(t))}_{int(t % 1 * 1000):03d}.{ext}'
             _write_image(os.path.join(folder, name), frame)
         with open(os.path.join(folder, 'info.txt'), 'w', encoding='utf-8') as f:
             f.write(f'任務：{type(task).__name__}\n')
             f.write(f'原因：{reason}\n')
             f.write(f'時間：{time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))}\n')
-            f.write(f'截圖：{len(frames)} 張（依時間排序，最後一張最接近出錯當下）\n')
+            f.write(f'截圖：{len(frames)} 張（依時間排序，最後一張是 PNG，最接近出錯當下）\n')
             if detail:
                 f.write(f'\n{detail}\n')
         tail = _read_log_tail(GUARD.log_file, GUARD.log_tail_lines)
         if tail:
             with open(os.path.join(folder, 'log.txt'), 'w', encoding='utf-8') as f:
                 f.write(tail)
-        _prune_scenes(GUARD.scene_dir, GUARD.max_scenes)
+        _prune_scenes(GUARD.scene_dir, GUARD.max_scenes, GUARD.max_scene_mb * 1024 * 1024)
     except Exception as e:
         task.log_info(f'保存錯誤現場失敗：{e}')
         return None
@@ -172,7 +184,9 @@ def save_scene(task, reason, detail=''):
 
 def _write_image(path, frame):
     import cv2  # 延後匯入，單元測試不需要 OpenCV
-    ok, buf = cv2.imencode('.png', frame)
+    ext = os.path.splitext(path)[1]
+    params = [cv2.IMWRITE_JPEG_QUALITY, GUARD.jpg_quality] if ext == '.jpg' else []
+    ok, buf = cv2.imencode(ext, frame, params)
     if ok:
         buf.tofile(path)  # 用 tofile 才能寫入含中文的路徑
 
@@ -188,11 +202,88 @@ def _read_log_tail(path, lines, max_bytes=512 * 1024):
     return '\n'.join(data.decode('utf-8', errors='replace').splitlines()[-lines:])
 
 
-def _prune_scenes(root, keep):
-    """只保留最新的 keep 份現場（資料夾以時間開頭命名，依名稱排序即依時間排序）。"""
-    if keep <= 0:
-        return
+def _prune_scenes(root, keep, max_bytes=0):
+    """依份數與總大小清理現場，從最舊的刪起；最新的一份一定保留。
+
+    資料夾以時間開頭命名，依名稱排序即依時間排序；其他資料夾不動。
+    """
     scenes = sorted(d for d in os.listdir(root)
                     if d[:8].isdigit() and os.path.isdir(os.path.join(root, d)))
-    for d in scenes[:-keep]:
-        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+    if keep > 0:
+        for d in scenes[:-keep]:
+            shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+        scenes = scenes[-keep:]
+    if max_bytes > 0:
+        sizes = [_folder_size(os.path.join(root, d)) for d in scenes]
+        total = sum(sizes)
+        for d, size in zip(scenes[:-1], sizes):
+            if total <= max_bytes:
+                break
+            shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+            total -= size
+
+
+_last_screenshot_check = None
+
+
+def maybe_clean_screenshots(task):
+    """每隔 screenshot_check_interval 秒檢查一次框架的截圖資料夾，超過上限就從最舊的檔案刪起。
+
+    框架只在程式啟動時清理這個資料夾，連續掛機好幾天會一直變大。
+    """
+    global _last_screenshot_check
+    now = time.time()
+    if _last_screenshot_check is None:
+        # 框架啟動時剛清理過，下次檢查從現在開始計時
+        _last_screenshot_check = now
+        return
+    if now - _last_screenshot_check < GUARD.screenshot_check_interval:
+        return
+    _last_screenshot_check = now
+    try:
+        removed, freed = _trim_folder(GUARD.screenshot_dir, GUARD.screenshot_max_mb * 1024 * 1024)
+    except Exception as e:
+        task.log_info(f'清理截圖資料夾失敗：{e}')
+        return
+    if removed:
+        task.log_info(f'截圖資料夾超過 {GUARD.screenshot_max_mb:g} MB，'
+                      f'刪除最舊的 {removed} 個檔案（{freed / 1024 / 1024:.1f} MB）')
+
+
+def _trim_folder(root, max_bytes):
+    """資料夾總大小超過 max_bytes 時，依修改時間從最舊的檔案刪起。回傳（刪除數, 釋放的位元組）。"""
+    if not os.path.isdir(root):
+        return 0, 0
+    files = []
+    for dirpath, _, names in os.walk(root):
+        for name in names:
+            path = os.path.join(dirpath, name)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            files.append((st.st_mtime, st.st_size, path))
+    total = sum(size for _, size, _ in files)
+    removed = freed = 0
+    for _, size, path in sorted(files):
+        if total <= max_bytes:
+            break
+        try:
+            os.remove(path)
+        except OSError:
+            continue  # 框架可能正在寫入這個檔案
+        total -= size
+        removed += 1
+        freed += size
+    return removed, freed
+
+
+def _folder_size(path):
+    total = 0
+    for dirpath, _, names in os.walk(path):
+        for name in names:
+            try:
+                total += os.path.getsize(os.path.join(dirpath, name))
+            except OSError:
+                pass
+    return total
