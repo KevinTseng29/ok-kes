@@ -8,8 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 # 沒有安裝框架與介面套件的環境（GitHub Actions 的單元測試）整個檔案略過
-if not all(importlib.util.find_spec(m) for m in ("ok", "PySide6", "requests", "opencc", "cv2")):
-    raise unittest.SkipTest("需要 ok-script、PySide6、requests、opencc 與 opencv")
+if not all(importlib.util.find_spec(m) for m in ("ok", "PySide6", "opencc", "cv2")):
+    raise unittest.SkipTest("需要 ok-script、PySide6、opencc 與 opencv")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]

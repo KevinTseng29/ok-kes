@@ -8,11 +8,11 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 # 沒有安裝框架與介面套件的環境（GitHub Actions 的單元測試）整個檔案略過
-if not all(importlib.util.find_spec(m) for m in ("ok", "PySide6", "requests", "opencc")):
-    raise unittest.SkipTest("需要 ok-script、PySide6、requests 與 opencc")
+if not all(importlib.util.find_spec(m) for m in ("ok", "PySide6", "opencc")):
+    raise unittest.SkipTest("需要 ok-script、PySide6 與 opencc")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,12 +27,6 @@ import preset_deck_ui as ui
 SAMPLE = json.loads((ROOT / "tests/fixtures/ross_preset.json").read_text(encoding="utf-8"))
 PRESET = {"charId": SAMPLE["character_id"], "cards": SAMPLE["entries"]}
 NEW_PRESETS = json.loads((ROOT / "tests/fixtures/mika_lida_presets.json").read_text(encoding="utf-8"))
-
-
-def response(value, status=200):
-    result = Mock(status_code=status)
-    result.iter_content.return_value = [value.encode("utf-8")]
-    return result
 
 
 class ImportConversionTests(unittest.TestCase):
@@ -157,52 +151,41 @@ class ImportConversionTests(unittest.TestCase):
         self.assertEqual(importer._keywords("抽取1\n50%\n#unknown#\n<unknown>", min_length=2), ["抽取1"])
 
 
-class ServiceTests(unittest.TestCase):
-    def test_validates_before_network(self):
+class OfflineDecodeTests(unittest.TestCase):
+    def test_rejects_malformed_codes(self):
         for code in ["", "角色：" + SAMPLE["code"], "https://example.com", "v6l8" + "a" * 4093]:
-            with self.subTest(code=code[:20]), patch.object(importer.requests, "Session") as session:
-                with self.assertRaises(importer.DeckImportError):
-                    importer.decode_share_code(code)
-                session.assert_not_called()
+            with self.subTest(code=code[:20]), self.assertRaises(importer.DeckImportError):
+                importer.decode_share_code(code)
 
-    def test_flight_response_and_request_contract(self):
-        text = '0:{"a":"$@1"}\n1:' + json.dumps({"ok": True, "preset": PRESET})
-        with patch.object(importer.requests, "Session") as factory:
-            session = factory.return_value.__enter__.return_value
-            session.post.return_value = response(text)
-            result = importer.decode_share_code(SAMPLE["code"])
-            self.assertEqual(result, PRESET)
-            kwargs = session.post.call_args.kwargs
-            self.assertEqual(json.loads(kwargs["data"]), [SAMPLE["code"]])
-            self.assertEqual(session.post.call_args.args[0], importer.BUILDER_URL)
-            self.assertTrue(kwargs["stream"])
+    def test_offline_decode_matches_site_preset(self):
+        result = importer.decode_share_code(SAMPLE["code"])
+        self.assertEqual(result["charId"], PRESET["charId"])
+        self.assertNotIn("decodeWarnings", result)
+        unset = (None, "", False)
+        strip = lambda card: {k: v for k, v in card.items() if v not in unset and k != "god"}
+        self.assertEqual([strip(c) for c in result["cards"]], [strip(c) for c in PRESET["cards"]])
 
-    def test_unknown_card_and_network_failure(self):
-        with patch.object(importer.requests, "Session") as factory:
-            session = factory.return_value.__enter__.return_value
-            session.post.return_value = response('1:{"ok":false,"error":"unknownCard"}')
-            with self.assertRaisesRegex(importer.DeckImportError, "unknownCard"):
-                importer.decode_share_code(SAMPLE["code"])
-            session.post.side_effect = importer.requests.Timeout()
-            with self.assertRaisesRegex(importer.DeckImportError, "网络"):
-                importer.decode_share_code(SAMPLE["code"])
+    def test_round_trip_of_new_presets(self):
+        from src.czn_deckcode import encode
+        for name, preset in NEW_PRESETS.items():
+            with self.subTest(name=name):
+                decoded = importer.decode_share_code(encode(preset))
+                self.assertEqual(importer.convert_preset(decoded)[0], importer.convert_preset(preset)[0])
 
-    def test_action_discovery_and_outdated_action_retry(self):
-        action = "a" * 40
-        script = f'(0,D.createServerReference)("{action}",D.callServer,void 0,D.findSourceMapURL,"decodeGamePresetAction")'
-        session = Mock()
-        session.get.side_effect = [response('<script src="/_next/static/chunks/deck.js"></script>'), response(script)]
-        self.assertEqual(importer._discover_action(session), action)
-        with patch.object(importer.requests, "Session") as factory, patch.object(importer, "_discover_action", return_value=action), patch.object(importer, "_DECODE_ACTION", "b" * 40):
-            session = factory.return_value.__enter__.return_value
-            session.post.side_effect = [response("old", 404), response('1:{"ok":true,"preset":' + json.dumps(PRESET) + '}')]
-            self.assertEqual(importer.decode_share_code(SAMPLE["code"]), PRESET)
-            self.assertEqual(session.post.call_args.kwargs["headers"]["Next-Action"], action)
+    def test_truncated_code_fails_without_result(self):
+        code = SAMPLE["code"]
+        with self.assertRaises(importer.DeckImportError):
+            importer.decode_share_code(code[:len(code) // 2 // 4 * 4])
 
-    def test_bad_service_response(self):
-        for text in ["<html>error</html>", '1:{"ok":"true"}', '1:E{"message":"failed"}']:
-            with self.assertRaises(importer.DeckImportError):
-                importer.parse_action_response(text)
+    def test_decode_warnings_reach_import_warnings(self):
+        preset = dict(PRESET, decodeWarnings=["卡组码第 3 张卡的神闪无法识别，已忽略这一项。"])
+        _, warnings, _ = importer.convert_preset(preset)
+        self.assertEqual(warnings[0], "卡组码第 3 张卡的神闪无法识别，已忽略这一项。")
+
+    def test_warning_text(self):
+        from src.czn_deckcode import DecodeWarning
+        text = importer._decode_warning_text(DecodeWarning(2, "c_1_a", "divine", "x", "dropped_option"))
+        self.assertEqual(text, "卡组码第 3 张卡（c_1_a）的神闪无法识别，已忽略这一项。")
 
 
 class EditorTests(unittest.TestCase):

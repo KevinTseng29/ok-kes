@@ -33,6 +33,9 @@ def run():
         assert len(load_catalog()["cards"]) > 2000
         dialog.close()
         report["checks"].append("实验任务、预设编辑器和中文卡牌映射")
+        from src.czn_deckcode import decode, encode
+        assert decode(encode({"charId": "30134", "cards": [{"cardId": "c_30134_uni1"}]})).char_id == "30134"
+        report["checks"].append("离线卡组码编解码")
         from src.window_recovery import install_window_recovery
         install_window_recovery()
         from src.config import version

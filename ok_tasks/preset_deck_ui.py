@@ -88,9 +88,7 @@ class DeckCodeImportDialog(QDialog):
             f"导入文本语言：{language}（取自本模式的「游戏语言」配置）。\n"
             "成功后覆盖当前窗口的全部预设卡牌，点击主窗口「保存」后生效。\n"
             "能识别的字段会尽量导入，缺失字段在表格「导入提示」列标出，可双击补填。\n"
-            "联网解析会将卡组码发送到 cznmetadecks.com；部分卡组码可能暂不受支持。\n"
-            "含【记忆】等赛季卡的卡组码可能无法解析。若解析失败，请先在原 BD 中去掉赛季卡，"
-            "重新导出卡组码后再导入。"
+            "卡组码在本机离线解析，不会联网。卡组码里无法识别的部分会在导入结果中列出。"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -122,7 +120,7 @@ class DeckCodeImportDialog(QDialog):
         self._cancelled = False
         self.code_edit.setEnabled(False)
         self.import_button.setEnabled(False)
-        self.status_label.setText("正在联网解析卡组码，请稍候…")
+        self.status_label.setText("正在解析卡组码，请稍候…")
         self.worker = _DeckImportWorker(code, self.language)
         self.worker.succeeded.connect(self._succeeded)
         self.worker.failed.connect(self._failed)
