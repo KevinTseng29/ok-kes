@@ -3,6 +3,7 @@ import sys
 import os
 import traceback
 from src.config import config
+from src.ui.LabelAndEditableDropDown import install as install_editable_drop_down
 from src.ui.SponsorDialog import install_sponsor_dialog
 from src.zh_tw_ui import install as install_zh_tw_ui
 
@@ -10,6 +11,7 @@ if __name__ == '__main__':
     try:
         install_sponsor_dialog()
         install_zh_tw_ui()
+        install_editable_drop_down()
         # PyInstaller --onefile mode: 切换数据目录，但配置文件保存在 exe 所在位置
         if getattr(sys, 'frozen', False):
             exe_dir = os.path.dirname(sys.executable)

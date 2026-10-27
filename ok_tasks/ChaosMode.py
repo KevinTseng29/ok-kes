@@ -12,6 +12,7 @@ from config_io import (
     migrate_game_language_config_file,
 )
 from config_sync import check_upload_if_needed, show_hot_configs_dialog
+from members import MEMBER_NAMES
 from utils import (
     reset_all_status,
     _migrate_route_boss_to_elite,
@@ -106,6 +107,7 @@ class ChaosMode(HumanizeMixin, TriggerTask):
             },
             '第几层boss前自动暂停': {'type': 'drop_down', 'options': ['不暂停', '1', '2']},
             '存储数据保存上限大于多少': {'min': 0, 'max': 170},
+            '刷存档主战员': {'type': 'editable_drop_down', 'options': MEMBER_NAMES, 'options_key': '游戏语言'},
         }
         self.config_description['游戏语言'] = "国际服请设置为繁体中文"
         self.config_description['闪光优先级'] = (
