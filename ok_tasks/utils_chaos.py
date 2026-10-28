@@ -257,8 +257,9 @@ def handle_season_chaos_initial_page(task: TriggerTask):
         return False
 
     task.log_info("存储数据保存上限不足，点击再次观测")
-    # 反复再次观测是正常流程，不算原地打转
+    # 反复再次观测是正常流程，不算原地打转；画面变化也小，重新计时免得 handle_stuck_log 判成卡住
     guard.clear_click_record(task)
+    task._last_change_time = time.time()
     task.click_box(observe_boxes[0])
     task.sleep(1)
     return True
@@ -289,8 +290,9 @@ def handle_zero_system_initial_page(task: TriggerTask):
         )
         if data_value_level >= required_level:
             return False
-        # 反复重新合成是正常流程，不算原地打转；读不到数值时不清，持续读不到会被当成打转
+        # 反复重新合成是正常流程，不算原地打转（也不算画面卡住）；读不到数值时不清，持续读不到会被当成打转
         guard.clear_click_record(task)
+        task._last_change_time = time.time()
     else:
         task.log_info(f"零式系统未识别到存储数据保存上限，区域文本=「{value_text}」")
 
