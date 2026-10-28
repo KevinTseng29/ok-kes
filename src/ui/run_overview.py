@@ -1,7 +1,7 @@
 """運行總覽分頁（仿 ALAS）：左邊狀態欄、右邊即時日誌，一直都在，不擠進即時觸發頁。
 
 - 開始／暫停：跟開始頁的開始鍵同一套；在開始頁按開始後也跳到這一頁。
-- 戰績：src/run_stats.py 存檔的「今日」與「全部」，重啟不歸零，可重置。
+- 戰績：src/run_stats.py 存檔的「今日」與「全部」，卡厄思與出擊分開算，重啟不歸零，可重置。
 - 本局：正在跑的卡厄思／出擊任務的 info（層數、節點、信用點……）與日誌裡的生命值。
 - 主練：刷存档主战员、三格裝備（名稱、品質，效果放在提示）、預設卡組各卡牌已有／需要張數。
 - 即時日誌：接框架的 communicate.log；精簡模式隱藏除錯雜訊（run_overview_data.NOISY），
@@ -24,6 +24,8 @@ from src import run_overview_data as data
 from src import run_stats
 
 MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieMode', 'StoryMode')
+# 戰績分組：卡厄思（含實驗版）與出擊分開算
+STAT_GROUPS = (('卡厄思', ('ChaosModeExperimental', 'ChaosMode')), ('出击', ('SortieMode',)))
 
 
 def install():
@@ -192,13 +194,18 @@ class RunOverviewTab(CustomTab):
             self.logger.error('运行总览更新失败', e)
 
     def _stats_html(self):
-        stats = run_stats.summary()
-        lines = [
-            f"{_tr('今日')}：{run_stats.rate_text(*stats['today'])}",
-            f"{_tr('全部')}：{run_stats.rate_text(*stats['total'])}",
-        ]
-        if stats['since']:
-            lines.append(f"<span style='color:gray'>{_tr('自')} {stats['since']} {_tr('起')}</span>")
+        lines = []
+        since = ''
+        for label, modes in STAT_GROUPS:
+            stats = run_stats.summary(modes=modes)
+            since = stats['since']
+            lines += [
+                f"<b>{_tr(label)}</b>",
+                f"{_tr('今日')}：{run_stats.rate_text(*stats['today'])}",
+                f"{_tr('全部')}：{run_stats.rate_text(*stats['total'])}",
+            ]
+        if since:
+            lines.append(f"<span style='color:gray'>{_tr('自')} {since} {_tr('起')}</span>")
         return '<br>'.join(lines)
 
     def _run_html(self, task):

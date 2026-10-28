@@ -33,6 +33,18 @@ class TestRunStats(unittest.TestCase):
         self.assertEqual(stats['since'], '2026-10-27 23:50')
         self.assertTrue(stats['last']['success'])
 
+    def test_modes_counted_separately(self):
+        run_stats.record(True, 'ChaosModeExperimental', self.path, now=at('2026-10-28 09:00'))
+        run_stats.record(False, 'ChaosMode', self.path, now=at('2026-10-28 10:00'))
+        run_stats.record(True, 'SortieMode', self.path, now=at('2026-10-28 18:36'))
+        run_stats.record(True, 'SortieMode', self.path, now=at('2026-10-28 18:45'))
+        now = at('2026-10-28 19:00')
+        chaos = run_stats.summary(self.path, now=now, modes=('ChaosModeExperimental', 'ChaosMode'))
+        sortie = run_stats.summary(self.path, now=now, modes=('SortieMode',))
+        self.assertEqual((chaos['today'], chaos['total']), ((1, 1), (1, 1)))
+        self.assertEqual((sortie['today'], sortie['total']), ((2, 0), (2, 0)))
+        self.assertEqual(run_stats.summary(self.path, now=now)['total'], (3, 1))  # 不分模式時照舊全部算
+
     def test_reset_and_missing_file(self):
         self.assertEqual(run_stats.summary(self.path)['total'], (0, 0))
         run_stats.record(True, path=self.path, now=at('2026-10-28 09:00'))

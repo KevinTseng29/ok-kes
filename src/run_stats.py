@@ -1,6 +1,6 @@
 """每一局探險結果的戰績存檔（configs/run_stats.json），重啟 ok-kes 也不歸零。
 
-任務在探險結果頁判定成功／失敗時呼叫 record()；運行總覽分頁用 summary() 顯示「今日」與「全部」。
+任務在探險結果頁判定成功／失敗時呼叫 record()（每局記下模式）；運行總覽分頁用 summary() 分模式顯示「今日」與「全部」。
 只保留最近 MAX_ROUNDS 局的明細。本模組不依賴 ok 套件，方便單元測試。
 """
 import json
@@ -66,11 +66,12 @@ def _count(rounds):
     return wins, len(rounds) - wins
 
 
-def summary(path=STATS_FILE, now=None):
-    """回傳 {'today': (勝, 敗), 'total': (勝, 敗), 'since': 開始累計時間, 'last': 最後一局或 None}。"""
+def summary(path=STATS_FILE, now=None, modes=None):
+    """回傳 {'today': (勝, 敗), 'total': (勝, 敗), 'since': 開始累計時間, 'last': 最後一局或 None}。
+    modes 給了就只算這些模式（任務類別名稱）的局，例如卡厄思與出擊分開算。"""
     now = time.time() if now is None else now
     data = _load(path) or _empty(now)
-    rounds = data['rounds']
+    rounds = [r for r in data['rounds'] if modes is None or r.get('mode') in modes]
     today = time.strftime('%Y-%m-%d', time.localtime(now))
     return {
         'today': _count([r for r in rounds if str(r.get('time', '')).startswith(today)]),
