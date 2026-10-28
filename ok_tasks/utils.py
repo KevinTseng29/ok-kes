@@ -2316,7 +2316,7 @@ def _journal(task: TriggerTask, kind, detail):
 RUN_PROGRESS_FILE = os.path.join("logs", "run_progress.json")
 RUN_PROGRESS_MAX_AGE = 30 * 60  # 超过这么久没更新的存档当成别局的，不还原
 _RUN_PROGRESS_KEYS = ("pass_final_boss_count", "get_specific_flash", "node_count", "removed_card_count",
-                      "neutral_card_count", "arpeggio_divine")
+                      "neutral_card_count", "arpeggio_divine", "reach_final_boss", "final_boss_battle")
 
 
 def save_run_progress(task: TriggerTask):
