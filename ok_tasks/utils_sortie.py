@@ -390,9 +390,11 @@ def _select_battle_member(task: TriggerTask, max_scrolls=5):
 # ------------------------- 出击模式独有页面处理函数 -------------------------
 
 def handle_boss_selection(task: TriggerTask):
-    """首领选择页面: 随机选择一个首领并确认。"""
+    """首领选择页面: 随机选择一个首领并确认。
+    简中「请选择在核心遇见的首领」、繁中「請選擇在核心遭遇的BOSS」（转简体后「遭遇的BOSS」）两种都认；
+    原本只认简中，繁中每次换层都要等卡住兜底随机乱点才过。"""
     box = find_box_at_point(task, 0.484, 0.928)
-    if not (box and re.search(r"请选择.*遇见的首领", box.name)):
+    if not (box and re.search(r"请选择.*(遇见|遭遇)的(首领|BOSS)", box.name, re.IGNORECASE)):
         return False
     bosses = []
     for x, y in [(0.358, 0.706), (0.641, 0.706)]:

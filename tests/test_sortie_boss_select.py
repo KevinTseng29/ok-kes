@@ -1,0 +1,47 @@
+import importlib.util
+import os
+import sys
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+# 沒有安裝框架的環境（GitHub Actions 的單元測試）整個檔案略過
+if not all(importlib.util.find_spec(m) for m in ("ok", "cv2", "opencc")):
+    raise unittest.SkipTest("需要 ok-script、opencv 與 opencc")
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ok_tasks"))
+
+import utils_sortie  # noqa: E402
+
+
+def box(name, cx, cy, w=0.06, h=0.04):
+    return SimpleNamespace(name=name, x=(cx - w / 2) * 1280, y=(cy - h / 2) * 720, width=w * 1280, height=h * 720,
+                           area=lambda: w * h)
+
+
+class TestBossSelection(unittest.TestCase):
+    """換層時的首領選擇頁：簡中「遇見的首領」與繁中「遭遇的BOSS」都要認得（error_scenes/20261028_214704）。"""
+
+    def run_page(self, prompt):
+        t = SimpleNamespace(width=1280, height=720, logs=[],
+                            all_texts=[box(prompt, 0.5, 0.93, w=0.26), box("美梦", 0.358, 0.708), box("塞拉菲翁", 0.641, 0.708)])
+        t.log_info = lambda message, notify=False: t.logs.append(message)
+        t.sleep = lambda seconds: None
+        with patch.object(utils_sortie, "_move_and_click") as click:
+            handled = utils_sortie.handle_boss_selection(t)
+        return handled, click
+
+    def test_traditional_server_prompt(self):
+        handled, click = self.run_page("请选择在核心遭遇的BOSS。")
+        self.assertTrue(handled)
+        click.assert_called_once()
+
+    def test_simplified_server_prompt(self):
+        self.assertTrue(self.run_page("请选择在核心遇见的首领")[0])
+
+    def test_other_page(self):
+        self.assertFalse(self.run_page("请选择1张欲获得的卡牌。")[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
