@@ -899,6 +899,27 @@ def handle_extra_card_use(task: TriggerTask):
     return False
 
 
+def handle_draw_card_select(task: TriggerTask):
+    """战斗中「请选择1张欲抽取的卡牌」：按出牌优先级挑要抽的牌，都没命中就随机。
+    原本没有处理函数，每次都要等卡住兜底（10 秒）才随机点一张。"""
+    title = find_box_at_point(task, 0.499, 0.131)
+    if not (title and re.search(r"请选择\d*张?.*抽取的卡牌", title.name)):
+        return False
+    cards = recognize_cards(task, page="抽取卡牌页面")
+    if not cards:
+        return False
+    priority = _get_config_value(task, "出牌优先级", [])
+    chosen = next((card for name in priority if name for card in cards if name in card["name"]), None)
+    if chosen:
+        task.log_info(f"抽取卡牌: 按出牌优先级选择「{chosen['name']}」")
+    else:
+        chosen = random.choice(cards)
+        task.log_info(f"抽取卡牌: 未命中出牌优先级，随机选择「{chosen['name']}」")
+    _move_and_click(task, chosen["x"], chosen["y"])
+    task.sleep(1.5)
+    return True
+
+
 def handle_card_function_select(task: TriggerTask):
     """卡牌功能选择页面: 量子晶种预测选创造，小丑任务随机选任务（战斗相关页面，优先级高于战斗页面）。"""
     title = find_box_at_point(task, 0.499, 0.131)
@@ -1084,6 +1105,7 @@ PAGE_HANDLERS = [
     handle_curiosity_activate,
     handle_extra_card_use,
     handle_card_function_select,
+    handle_draw_card_select, #战斗中「请选择1张欲抽取的卡牌」
     handle_return_to_draw_pile,
     handle_weakness_info,
     handle_battle_page,

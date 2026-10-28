@@ -3,6 +3,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+import unittest.mock
 from unittest.mock import patch
 
 # 沒有安裝框架的環境（GitHub Actions 的單元測試）整個檔案略過
@@ -41,6 +42,36 @@ class TestBossSelection(unittest.TestCase):
 
     def test_other_page(self):
         self.assertFalse(self.run_page("请选择1张欲获得的卡牌。")[0])
+
+
+
+class TestDrawCardSelect(unittest.TestCase):
+    """戰鬥中「請選擇1張欲抽取的卡牌」：照出牌優先級挑，沒命中就隨機（error_scenes/20261028_220923）。"""
+
+    def run_page(self, prompt, cards, priority):
+        t = SimpleNamespace(width=1280, height=720, logs=[], config={"出牌优先级": priority},
+                            all_texts=[box(prompt, 0.5, 0.131, w=0.3)])
+        t.log_info = lambda message, notify=False: t.logs.append(message)
+        t.sleep = lambda seconds: None
+        with patch.object(utils_sortie, "recognize_cards", return_value=cards), \
+                patch.object(utils_sortie, "_move_and_click") as click:
+            handled = utils_sortie.handle_draw_card_select(t)
+        return handled, click
+
+    def test_picks_priority_card(self):
+        cards = [{"name": "节奏", "x": 0.25, "y": 0.29}, {"name": "节奏：琶音", "x": 0.5, "y": 0.29}]
+        handled, click = self.run_page("请选择1张欲抽取的卡牌。", cards, ["琶音", "节奏"])
+        self.assertTrue(handled)
+        click.assert_called_once_with(unittest.mock.ANY, 0.5, 0.29)
+
+    def test_random_when_no_priority(self):
+        cards = [{"name": "节奏", "x": 0.25, "y": 0.29}]
+        handled, click = self.run_page("请选择1张欲抽取的卡牌。", cards, ["琶音"])
+        self.assertTrue(handled)
+        click.assert_called_once()
+
+    def test_other_prompt(self):
+        self.assertFalse(self.run_page("请选择功能", [{"name": "节奏", "x": 0.2, "y": 0.3}], [])[0])
 
 
 if __name__ == "__main__":
