@@ -48,5 +48,29 @@ class TestStartButton(unittest.TestCase):
         start.assert_not_called()
 
 
+class TestStatsGroup(unittest.TestCase):
+    """戰績只顯示現在啟動的模式那一組；沒在跑卡厄思／出擊時兩組都列。"""
+
+    def html(self, task):
+        stats = {"today": (1, 0), "total": (2, 1), "since": ""}
+        with patch.object(run_overview.run_stats, "summary", return_value=stats), \
+                patch.object(run_overview, "_tr", lambda text: text):
+            return run_overview.RunOverviewTab._stats_html(None, task)
+
+    def test_only_active_mode(self):
+        sortie = self.html(type("SortieMode", (), {})())
+        self.assertIn("出击", sortie)
+        self.assertNotIn("卡厄思", sortie)
+        chaos = self.html(type("ChaosModeExperimental", (), {})())
+        self.assertIn("卡厄思", chaos)
+        self.assertNotIn("出击", chaos)
+
+    def test_both_when_idle_or_story(self):
+        for task in (None, type("StoryMode", (), {})()):
+            html = self.html(task)
+            self.assertIn("卡厄思", html)
+            self.assertIn("出击", html)
+
+
 if __name__ == "__main__":
     unittest.main()

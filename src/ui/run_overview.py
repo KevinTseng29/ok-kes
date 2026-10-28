@@ -1,7 +1,7 @@
 """運行總覽分頁（仿 ALAS）：左邊狀態欄、右邊即時日誌，一直都在，不擠進即時觸發頁。
 
 - 開始／暫停：跟開始頁的開始鍵同一套；在開始頁按開始後也跳到這一頁。
-- 戰績：src/run_stats.py 存檔的「今日」與「全部」，卡厄思與出擊分開算，重啟不歸零，可重置。
+- 戰績：src/run_stats.py 存檔的「今日」與「全部」，卡厄思與出擊分開算、只顯示現在啟動的那一種，重啟不歸零，可重置。
 - 本局：正在跑的卡厄思／出擊任務的 info（層數、節點、信用點……）與日誌裡的生命值。
 - 主練：刷存档主战员、三格裝備（名稱、品質，效果放在提示）、預設卡組各卡牌已有／需要張數。
 - 即時日誌：接框架的 communicate.log；精簡模式隱藏除錯雜訊（run_overview_data.NOISY），
@@ -183,8 +183,8 @@ class RunOverviewTab(CustomTab):
             return
         try:
             self._sync_start_button()
-            self.stats_label.setText(self._stats_html())
             task = self._active_task()
+            self.stats_label.setText(self._stats_html(task))
             self.run_label.setText(self._run_html(task))
             self._sync_stop_button(task)
             member_html, member_tip = self._member_html(task)
@@ -193,10 +193,13 @@ class RunOverviewTab(CustomTab):
         except Exception as e:  # 狀態欄出錯不影響任務
             self.logger.error('运行总览更新失败', e)
 
-    def _stats_html(self):
+    def _stats_html(self, task):
+        # 只顯示現在啟動的模式那一組；沒在跑卡厄思／出擊（劇情模式或沒有任務）時兩組都列
+        mode = type(task).__name__ if task is not None else ''
+        groups = [group for group in STAT_GROUPS if mode in group[1]] or STAT_GROUPS
         lines = []
         since = ''
-        for label, modes in STAT_GROUPS:
+        for label, modes in groups:
             stats = run_stats.summary(modes=modes)
             since = stats['since']
             lines += [
