@@ -2289,17 +2289,46 @@ def handle_main_member_flash(task: TriggerTask):
     return True
 
 
+_CARD_REWARD_MAX_MISSES = 5  # 卡牌奖励页连续几次认不出卡牌就点跳过
+
+
+def _skip_card_reward(task: TriggerTask):
+    """卡牌奖励页点「跳过」：先在右下区域找文字，找不到就点固定位置。"""
+    skip_box = next((b for b in task.all_texts
+                     if 0.620 <= (b.x + b.width / 2) / task.width <= 0.990
+                     and 0.883 <= (b.y + b.height / 2) / task.height <= 0.983
+                     and "跳过" in b.name), None)
+    if skip_box:
+        task.log_info("卡牌奖励页面触发跳过事件，点击「跳过」按钮")
+        task.click_box(skip_box)
+    else:
+        task.log_info("未找到跳过按钮，点击固定位置")
+        _move_and_click(task, 0.745, 0.933)
+    task.sleep(0.5)
+
+
 def handle_card_reward(task: TriggerTask):
     """卡牌奖励页面: 按类型特征识别卡牌，并按优先级选择。"""
     page_title = _get_region_text(task, (0.345, 0.012, 0.642, 0.141))
     if "卡牌奖励" not in page_title:
+        task._card_reward_misses = 0
         return False
 
     task.log_info("检测到卡牌奖励页面")
     cards = recognize_cards(task, page="卡牌奖励页面")
     if not cards:
-        task.log_info("卡牌奖励页面未识别到卡牌，等待下一轮处理")
+        # 认不出卡牌（例如事件「从 10 张随机中立卡选 1 张」的两排小卡）时确认键是灰的，原本只能等
+        # 卡住兜底随机乱点，点到哪张就拿哪张；连续几次都认不出就当成没命中优先级，点跳过
+        misses = getattr(task, "_card_reward_misses", 0) + 1
+        task._card_reward_misses = misses
+        if misses < _CARD_REWARD_MAX_MISSES:
+            task.log_info(f"卡牌奖励页面未识别到卡牌，等待下一轮处理（第{misses}次）")
+            return True
+        task._card_reward_misses = 0
+        task.log_info(f"卡牌奖励页面连续{misses}次都认不出卡牌，当成没有优先级卡牌，点击跳过")
+        _skip_card_reward(task)
         return True
+    task._card_reward_misses = 0
 
     target_boxes, target_click_positions = find_target_card(task)
     if target_boxes:
@@ -2379,18 +2408,7 @@ def handle_card_reward(task: TriggerTask):
 
     if chosen_card is None and cards:
         task.log_info("未命中优先级卡牌，跳过非优先级卡牌")
-        # 在区域(0.620,0.883,0.990,0.983)内查找包含"跳过"的box并点击
-        skip_box = next((b for b in task.all_texts
-                         if 0.620 <= (b.x + b.width / 2) / task.width <= 0.990
-                         and 0.883 <= (b.y + b.height / 2) / task.height <= 0.983
-                         and "跳过" in b.name), None)
-        if skip_box:
-            task.log_info("卡牌奖励页面触发跳过事件，点击「跳过」按钮")
-            task.click_box(skip_box)
-        else:
-            task.log_info("未找到跳过按钮，点击固定位置")
-            _move_and_click(task, 0.745, 0.933)
-        task.sleep(0.5)
+        _skip_card_reward(task)
         return True
 
     if chosen_card:

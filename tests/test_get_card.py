@@ -121,5 +121,36 @@ class TestChooseEquipmentQuality(unittest.TestCase):
         self.assertEqual(len(regions), 4)
 
 
+class TestCardRewardFallback(unittest.TestCase):
+    """卡牌獎勵頁（事件的 10 張隨機中立卡兩排小卡）認不出卡牌：連續幾次就點跳過，不等卡住兜底亂點。"""
+
+    def task(self):
+        task = Task([box("卡牌奖励", 0.5, 0.13, w=0.12), box("跳过", 0.703, 0.931)], {})
+        task.clicked = []
+        task.click_box = lambda b: task.clicked.append(b.name)
+        return task
+
+    def test_skips_after_misses(self):
+        task = self.task()
+        with patch.object(utils, "recognize_cards", return_value=[]):
+            for _ in range(utils._CARD_REWARD_MAX_MISSES - 1):
+                self.assertTrue(utils.handle_card_reward(task))
+            self.assertEqual(task.clicked, [])
+            self.assertTrue(utils.handle_card_reward(task))
+        self.assertEqual(task.clicked, ["跳过"])
+
+    def test_leaving_page_resets(self):
+        task = self.task()
+        texts = task.all_texts
+        with patch.object(utils, "recognize_cards", return_value=[]):
+            for _ in range(utils._CARD_REWARD_MAX_MISSES - 1):
+                utils.handle_card_reward(task)
+            task.all_texts = []
+            self.assertFalse(utils.handle_card_reward(task))
+            task.all_texts = texts
+            utils.handle_card_reward(task)
+        self.assertEqual(task.clicked, [])
+
+
 if __name__ == "__main__":
     unittest.main()
