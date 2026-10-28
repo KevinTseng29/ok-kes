@@ -28,7 +28,8 @@ def battle_task():
 
 
 class TestUnreadableHand(unittest.TestCase):
-    """有卡牌停在選目標狀態（手牌被擠到下面、一張都認不出）時按 E 沒反應：連續兩次就按 Enter 確認。"""
+    """手牌數不是 0 卻一張都認不出：先等一幀 → Enter（卡牌停在選目標狀態）→ 兜底全按 → 才按 E。
+    原本第一幀就按 E，使用者看到手上還有 0 費琶音就被結束回合（23:16、23:20 開戰第一幀）。"""
 
     def run_frames(self, hand_count, frames, cards=()):
         t = battle_task()
@@ -36,13 +37,15 @@ class TestUnreadableHand(unittest.TestCase):
                 patch.object(utils_sortie, "mark_battle"), \
                 patch.object(utils_sortie, "_hand_card_names", return_value=[]), \
                 patch.object(utils_sortie, "_hand_cards", return_value=list(cards)), \
-                patch.object(utils_sortie, "_try_all_card_keys"):
+                patch.object(utils_sortie, "_try_all_card_keys", side_effect=lambda task, count: t.keys.append("all")):
             for _ in range(frames):
                 utils_sortie.handle_battle_page(t)
         return t.keys
 
-    def test_selected_card_gets_confirmed(self):
-        self.assertEqual(self.run_frames(6, 4), ["e", "enter", "e", "enter"])
+    def test_unreadable_hand_escalates_before_ending_turn(self):
+        self.assertEqual(self.run_frames(6, 1), [])  # 第一幀先等
+        self.assertEqual(self.run_frames(6, 4), ["enter", "all", "e"])
+        self.assertEqual(self.run_frames(6, 8), ["enter", "all", "e", "enter", "all", "e"])
 
     def test_empty_hand_just_ends_turn(self):
         self.assertEqual(self.run_frames(0, 3), ["e", "e", "e"])
