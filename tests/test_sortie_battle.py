@@ -57,7 +57,8 @@ class TestUnplayablePriorityCard(unittest.TestCase):
         hand = [{"name": "节奏", "key": "1"}, {"name": "守护", "key": "2"}]
         with patch.object(utils_sortie, "_read_hand_count", return_value=2), \
                 patch.object(utils_sortie, "mark_battle"), \
-                patch.object(utils_sortie, "_hand_card_names", return_value=["节奏", "守护"]), \
+                patch.object(utils_sortie, "_hand_card_names",
+                             return_value=[SimpleNamespace(name="节奏"), SimpleNamespace(name="守护")]), \
                 patch.object(utils_sortie, "_hand_cards", return_value=hand), \
                 patch.object(utils_sortie, "_try_all_card_keys") as fallback:
             for _ in range(2):
@@ -81,7 +82,7 @@ class TestEndTurnWhenNothingPlayable(unittest.TestCase):
         with patch.object(utils_sortie, "_read_hand_count", side_effect=lambda task: len(current["hand"])), \
                 patch.object(utils_sortie, "mark_battle"), \
                 patch.object(utils_sortie, "_hand_card_names",
-                             side_effect=lambda task: [c["name"] for c in current["hand"]]), \
+                             side_effect=lambda task: [SimpleNamespace(name=c["name"]) for c in current["hand"]]), \
                 patch.object(utils_sortie, "_hand_cards", side_effect=lambda task: list(current["hand"])), \
                 patch.object(utils_sortie, "_try_all_card_keys") as fallback:
             for _ in hands:

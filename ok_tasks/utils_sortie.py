@@ -483,7 +483,9 @@ def handle_battle_page(task: TriggerTask):
         task._unreadable_hand_frames = 0
         # 兜底出牌把每张都按过一遍，手牌却没变：手上的牌都打不起（AP 不够），这时要自己结束回合。
         # 原本会一直「优先级卡试两次 → 兜底全按一遍」循环、不停跳 AP 不足，直到某一帧刚好认不出手牌才按 E
-        hand_signature = (hand_count, tuple(sorted(c["name"] for c in cards)), tuple(sorted(card_names)))
+        # _hand_card_names 回传的是 OCR 文字框（Box），取名称比较；Box 本身不能排序
+        hand_signature = (hand_count, tuple(sorted(c["name"] for c in cards)),
+                          tuple(sorted(getattr(b, "name", str(b)) for b in card_names)))
         if getattr(task, "_fallback_hand_signature", None) == hand_signature:
             task._fallback_hand_signature = None
             task._last_attempted_card = None
