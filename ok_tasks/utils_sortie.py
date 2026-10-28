@@ -479,6 +479,18 @@ def handle_battle_page(task: TriggerTask):
 
     if (cards or card_names):
         task._unreadable_hand_frames = 0
+        # 兜底出牌把每张都按过一遍，手牌却没变：手上的牌都打不起（AP 不够），这时要自己结束回合。
+        # 原本会一直「优先级卡试两次 → 兜底全按一遍」循环、不停跳 AP 不足，直到某一帧刚好认不出手牌才按 E
+        hand_signature = (hand_count, tuple(sorted(c["name"] for c in cards)), tuple(sorted(card_names)))
+        if getattr(task, "_fallback_hand_signature", None) == hand_signature:
+            task._fallback_hand_signature = None
+            task._last_attempted_card = None
+            task._play_stuck_count = 0
+            task.log_info("兜底出牌后手牌没变（手上的牌都打不起），按E结束回合")
+            task.send_key("e")
+            task.sleep(1)
+            return True
+        task._fallback_hand_signature = None
         # 出牌卡手检测：追踪上一次尝试打出的卡牌是否连续多轮仍留在手牌中
         if not hasattr(task, '_play_stuck_count'):
             task._play_stuck_count = 0
@@ -502,6 +514,7 @@ def handle_battle_page(task: TriggerTask):
                             task._last_attempted_card = None
                             task._play_stuck_count = 0
                             _try_all_card_keys(task, hand_count)
+                            task._fallback_hand_signature = hand_signature
                             return True
                     else:
                         task._last_attempted_card = matched["name"]
@@ -526,6 +539,7 @@ def handle_battle_page(task: TriggerTask):
         # 兜底从大到小出牌
         task.log_info(f"未命中出牌优先级，按当前手牌数{hand_count}从大到小兜底出牌")
         _try_all_card_keys(task, hand_count)
+        task._fallback_hand_signature = hand_signature
         return True
     else:
         # 手牌数不是 0 却一张都认不出：多半有卡牌停在选目标状态（手牌被挤到下面），这时按 E 没反应。

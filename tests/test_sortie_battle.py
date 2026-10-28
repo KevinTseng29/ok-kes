@@ -60,10 +60,47 @@ class TestUnplayablePriorityCard(unittest.TestCase):
                 patch.object(utils_sortie, "_hand_card_names", return_value=["节奏", "守护"]), \
                 patch.object(utils_sortie, "_hand_cards", return_value=hand), \
                 patch.object(utils_sortie, "_try_all_card_keys") as fallback:
-            for _ in range(3):
+            for _ in range(2):
                 utils_sortie.handle_battle_page(t)
-        self.assertEqual(t.keys, ["1", "enter", "1", "enter"])  # 試兩次
-        fallback.assert_called_once_with(t, 2)  # 第三輪改兜底
+        self.assertEqual(t.keys, ["1", "enter"])  # 第一次照優先級出牌
+        fallback.assert_called_once_with(t, 2)  # 第二次還在手上就改兜底
+
+
+class TestEndTurnWhenNothingPlayable(unittest.TestCase):
+    """兜底出牌每張都按過、手牌卻沒變（AP 不夠）：自己按 E 結束回合，不再一直循環跳 AP 不足。"""
+
+    def run_frames(self, hands, priority=("节奏",)):
+        t = battle_task()
+        t.config = {"出牌优先级": list(priority)}
+        frames = iter(hands)
+        current = {}
+
+        def next_hand():
+            current["hand"] = next(frames)
+
+        with patch.object(utils_sortie, "_read_hand_count", side_effect=lambda task: len(current["hand"])), \
+                patch.object(utils_sortie, "mark_battle"), \
+                patch.object(utils_sortie, "_hand_card_names",
+                             side_effect=lambda task: [c["name"] for c in current["hand"]]), \
+                patch.object(utils_sortie, "_hand_cards", side_effect=lambda task: list(current["hand"])), \
+                patch.object(utils_sortie, "_try_all_card_keys") as fallback:
+            for _ in hands:
+                next_hand()
+                utils_sortie.handle_battle_page(t)
+        return t.keys, fallback
+
+    def test_unplayable_hand_ends_turn(self):
+        hand = [{"name": "节奏", "key": "1"}, {"name": "聚光灯", "key": "2"}]
+        keys, fallback = self.run_frames([hand] * 3)
+        fallback.assert_called_once()
+        self.assertEqual(keys, ["1", "enter", "e"])  # 出牌 → 沒出掉改兜底 → 手牌沒變就結束回合
+
+    def test_hand_changed_keeps_playing(self):
+        hand = [{"name": "节奏", "key": "1"}, {"name": "聚光灯", "key": "2"}]
+        after = [{"name": "聚光灯", "key": "1"}]  # 兜底打出了一張
+        keys, fallback = self.run_frames([hand, hand, after], priority=("节奏", "聚光灯"))
+        self.assertNotIn("e", keys)
+        self.assertEqual(keys, ["1", "enter", "1", "enter"])  # 照常打下一張
 
 
 if __name__ == "__main__":
