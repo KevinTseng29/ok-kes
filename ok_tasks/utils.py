@@ -1075,8 +1075,9 @@ def find_best_map_route(map_info, target_node_type):
     }
 
 
-def find_best_map_route_by_priority(map_info, node_type_priority):
-    """按节点类型加权计算最优路线，并返回下一列应选择的节点。"""
+def find_best_map_route_by_priority(map_info, node_type_priority, weights=None, shop_bonus=None):
+    """按节点类型加权计算最优路线，并返回下一列应选择的节点。
+    weights／shop_bonus 不给时：照优先级排名线性给分（最后一名 1 分），商店加最高分的两倍。"""
     nodes = map_info.get("nodes", [])
     adjacency = map_info.get("adjacency", {})
     node_by_id = {node["id"]: node for node in nodes}
@@ -1088,12 +1089,13 @@ def find_best_map_route_by_priority(map_info, node_type_priority):
         return None
 
     route_cache = {}
-    priority_weights = {
+    priority_weights = weights or {
         node_type: len(node_type_priority) - index
         for index, node_type in enumerate(node_type_priority)
     }
     highest_priority_weight = max(priority_weights.values(), default=1)
-    shop_bonus = highest_priority_weight * 2
+    if shop_bonus is None:
+        shop_bonus = highest_priority_weight * 2
 
     def best_route_from(node_id):
         if node_id in route_cache:
@@ -1266,7 +1268,14 @@ def _big_map_route_plan(task: TriggerTask, priority, visible_count):
     nodes = [dict(node, type="当前位置" if node["id"] == current
                   else ("已走过" if node["type"] == "当前位置" else node["type"]))
              for node in map_info["nodes"]]
-    plan = find_best_map_route_by_priority({"nodes": nodes, "adjacency": map_info["adjacency"]}, priority)
+    # 整层规划：排名每往前一名分数加倍（8/4/2/1），排第一的节点类型才会被明显多走（例如泰妮多走精英）；
+    # 商店不另外加分，只在分数相同时优先（商店买不到设定的东西时，它就只是一个休息点）。
+    # 第一层先求成形：休息（篝火闪光、回血）排最前，第二层起照设定
+    if floor == 0 and "休息" in priority:
+        priority = ["休息"] + [node_type for node_type in priority if node_type != "休息"]
+    weights = {node_type: 2 ** (len(priority) - 1 - index) for index, node_type in enumerate(priority)}
+    plan = find_best_map_route_by_priority({"nodes": nodes, "adjacency": map_info["adjacency"]}, priority,
+                                           weights=weights, shop_bonus=0)
     if not plan or len(plan["route"]) < 2:
         state["stale"] = True
         return None

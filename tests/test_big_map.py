@@ -95,6 +95,25 @@ class TestBigMapRoutePlan(unittest.TestCase):
         scan.assert_not_called()
         self.assertTrue(plan["route"][0].startswith("1列"))  # 從剛走到的第 1 列節點出發
 
+    def plan_on_floor(self, floor, priority):
+        self.task.node_status["pass_final_boss_count"] = floor
+        self.task._big_map = None
+        with patch.object(utils, "scan_big_map", return_value=self.map):
+            plan = utils._big_map_route_plan(self.task, priority, 3)
+        return [step.split("列", 1)[1] for step in plan["route"][1:]]
+
+    def test_top_priority_type_is_favoured(self):
+        """第二層起照設定：精英排第一（泰妮多走精英），權重加倍後整層路線走兩個精英；照原本線性權重只走一個。"""
+        route = self.plan_on_floor(1, ["精英", "休息", "事件", "小怪"])
+        self.assertEqual(route.count("精英"), 2)
+        linear = utils.find_best_map_route_by_priority(self.map, ["精英", "休息", "事件", "小怪"])
+        self.assertEqual(linear["type_counts"]["精英"], 1)
+
+    def test_first_floor_prefers_rest(self):
+        """第一層篝火優先：同樣設定精英第一，第一層的整層路線休息比精英多。"""
+        route = self.plan_on_floor(0, ["精英", "休息", "事件", "小怪"])
+        self.assertGreater(route.count("休息"), route.count("精英"))
+
     def test_mismatch_rescans_next_time(self):
         self.assertIsNone(self.plan(2)[0])  # 記錄 3 個、畫面 2 個
         self.assertTrue(self.task._big_map["stale"])
