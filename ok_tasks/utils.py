@@ -439,6 +439,21 @@ def _recognize_cards_by_features(
             (first_x - second_x) ** 2 + (first_y - second_y) ** 2
         ) ** 0.5
 
+    def feature_regions(feature_box):
+        center_x = (feature_box.x + feature_box.width / 2) / task.width
+        center_y = (feature_box.y + feature_box.height / 2) / task.height
+
+        def offset(offsets):
+            return (
+                max(0.0, center_x + offsets[0]),
+                max(0.0, center_y + offsets[1]),
+                min(1.0, center_x + offsets[2]),
+                min(1.0, center_y + offsets[3]),
+            )
+
+        return center_x, center_y, offset(name_offsets), offset(type_offsets), offset(description_offsets)
+
+    log_prefix = f"{page}: " if page else ""
     filtered_features = []
     for candidate in sorted(
         feature_candidates,
@@ -450,31 +465,20 @@ def _recognize_cards_by_features(
             for kept in filtered_features
         ):
             continue
+        # 名称区域没有字的特征直接排除，而且不占位：获得卡牌页角色头像旁的 ✦ 会被当成「强化」图示，
+        # 置信度还比真正的类型图示高，占位的话会把附近真正的类型图示挡掉，整页一张卡都认不出来
+        center_x, center_y, name_region, _, _ = feature_regions(candidate[2])
+        if not _get_region_text(task, name_region).strip():
+            task.log_info(
+                f"{log_prefix}卡牌识别调试: 特征={candidate[0]}，特征中心=({center_x:.4f},{center_y:.4f})，"
+                f"特征置信度={candidate[2].confidence:.4f}，名称区域没有文字，排除且不占位"
+            )
+            continue
         filtered_features.append(candidate)
 
     cards = []
-    log_prefix = f"{page}: " if page else ""
     for feature_name, feature_type, feature_box in filtered_features:
-        center_x = (feature_box.x + feature_box.width / 2) / task.width
-        center_y = (feature_box.y + feature_box.height / 2) / task.height
-        name_region = (
-            max(0.0, center_x + name_offsets[0]),
-            max(0.0, center_y + name_offsets[1]),
-            min(1.0, center_x + name_offsets[2]),
-            min(1.0, center_y + name_offsets[3]),
-        )
-        type_region = (
-            max(0.0, center_x + type_offsets[0]),
-            max(0.0, center_y + type_offsets[1]),
-            min(1.0, center_x + type_offsets[2]),
-            min(1.0, center_y + type_offsets[3]),
-        )
-        desc_region = (
-            max(0.0, center_x + description_offsets[0]),
-            max(0.0, center_y + description_offsets[1]),
-            min(1.0, center_x + description_offsets[2]),
-            min(1.0, center_y + description_offsets[3]),
-        )
+        center_x, center_y, name_region, type_region, desc_region = feature_regions(feature_box)
         card_name = _get_region_text(task, name_region).strip()
         task.log_info(
             f"{log_prefix}卡牌识别调试: 特征={feature_name}，"

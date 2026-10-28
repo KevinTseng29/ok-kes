@@ -534,16 +534,31 @@ def handle_battle_page(task: TriggerTask):
     return True
 
 
+_GET_CARD_MAX_MISSES = 5  # 获得卡牌页连续几次认不出卡牌就点跳过
+
+
 def handle_get_card(task: TriggerTask):
     """获得卡牌页面: 按优先级选择卡牌。"""
     title = find_box_at_point(task, 0.502, 0.128)
     tip = find_box_at_point(task, 0.883, 0.131)
     if not (title and title.name == "获得卡牌" and tip and re.search(r"请选择.*获得的卡牌", tip.name)):
+        task._get_card_misses = 0
         return False
     cards = recognize_cards(task, page="获得卡牌页面")
     if not cards:
-        task.log_info("获得卡牌: 未识别到卡牌类型特征，无法选择")
-        return False
+        # 认不出卡牌时确认键是灰的、别的处理函数也不会接手，会一直卡在这页；
+        # 连续几次都认不出就当成没命中优先级，点跳过
+        misses = getattr(task, "_get_card_misses", 0) + 1
+        task._get_card_misses = misses
+        if misses < _GET_CARD_MAX_MISSES:
+            task.log_info(f"获得卡牌: 未识别到卡牌类型特征，无法选择（第{misses}次）")
+            return False
+        task._get_card_misses = 0
+        task.log_info(f"获得卡牌: 连续{misses}次都认不出卡牌，当成没有优先级卡牌，点击跳过")
+        _move_and_click(task, 0.749, 0.931)
+        task.sleep(1)
+        return True
+    task._get_card_misses = 0
 
     priority = _get_config_value(task, "获得卡牌优先级", [])
     task.log_info(f"获得卡牌: 当前优先级配置: {priority}")
