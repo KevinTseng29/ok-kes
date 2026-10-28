@@ -817,6 +817,82 @@ msgstr "沒有符合搜索的項目。"
 msgid "这一项没有截图"
 msgstr "這一項沒有截圖"
 
+#: src/ui/run_overview.py
+msgid "战绩"
+msgstr "戰績"
+
+#: src/ui/run_overview.py
+msgid "重置战绩"
+msgstr "重置戰績"
+
+#: src/ui/run_overview.py
+msgid "本局"
+msgstr "本局"
+
+#: src/ui/run_overview.py
+msgid "主练"
+msgstr "主練"
+
+#: src/ui/run_overview.py
+msgid "状态"
+msgstr "狀態"
+
+#: src/ui/run_overview.py
+msgid "今日"
+msgstr "今日"
+
+#: src/ui/run_overview.py
+msgid "自"
+msgstr "自"
+
+#: src/ui/run_overview.py
+msgid "起"
+msgstr "起"
+
+#: src/ui/run_overview.py
+msgid "没有运行中的任务"
+msgstr "沒有運行中的任務"
+
+#: src/ui/run_overview.py
+msgid "已暂停"
+msgstr "已暫停"
+
+#: src/ui/run_overview.py
+msgid "运行中"
+msgstr "運行中"
+
+#: src/ui/run_overview.py
+msgid "生命值"
+msgstr "生命值"
+
+#: src/ui/run_overview.py
+msgid "装备"
+msgstr "裝備"
+
+#: src/ui/run_overview.py
+msgid "号位"
+msgstr "號位"
+
+#: src/ui/run_overview.py
+msgid "清空今日与全部战绩，从现在重新累计？"
+msgstr "清空今日與全部戰績，從現在重新累計？"
+
+#: src/ui/run_overview.py
+msgid "显示详细日志"
+msgstr "顯示詳細日誌"
+
+#: src/ui/run_overview.py
+msgid "清空"
+msgstr "清空"
+
+#: src/ui/run_overview.py
+msgid "即时日志"
+msgstr "即時日誌"
+
+#: src/ui/run_overview.py
+msgid "已暂停自动滚动，滚到最下面继续"
+msgstr "已暫停自動滾動，滾到最下面繼續"
+
 #: src/tasks/MyOneTimeTask.py
 msgid "Configuration Demo Task"
 msgstr "配置演示任務"

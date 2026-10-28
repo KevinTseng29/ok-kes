@@ -216,4 +216,7 @@ config = {
         ["src.tasks.MyOneTimeTask", "MyOneTimeTask"],
         ["ok", "DiagnosisTask"],
     ],
+    'custom_tabs': [  # 自订分页：运行总览（仿 ALAS，状态栏＋即时日志）
+        ['src.ui.run_overview', 'RunOverviewTab'],
+    ],
 }

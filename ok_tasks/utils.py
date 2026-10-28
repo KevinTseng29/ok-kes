@@ -4812,6 +4812,15 @@ def handle_escape(task: TriggerTask):
 #             task.node_status['final_boss_battle'] = False
 #     return False
 
+def _record_round(task: TriggerTask, succeeded):
+    """这一局的结果记进跨重启的战绩（src/run_stats.py，运行总览分页显示）；出错不影响流程。"""
+    try:
+        from src import run_stats
+        run_stats.record(succeeded, type(task).__name__)
+    except Exception as e:
+        task.log_info(f"记录战绩失败：{e}")
+
+
 def handle_expedition_result(task: TriggerTask):
     """探险结果页面: 如果0.625,0.122处有"探险结果"，则为探险结果页面。
     如果0.928,0.122处有"完成"，则success_rounds+1。"""
@@ -4830,7 +4839,9 @@ def handle_expedition_result(task: TriggerTask):
     failed_box = find_box_at_point(task, 0.296, 0.719)
     if hasattr(task, 'node_status'):
         task.node_status['total_rounds'] += 1
+    succeeded = False
     if complete_box and "完成" in complete_box.name:
+        succeeded = True
         if hasattr(task, 'node_status'):
             task.node_status['success_rounds'] += 1
             task.log_info("出击模式探险结果: 成功")
@@ -4839,16 +4850,21 @@ def handle_expedition_result(task: TriggerTask):
             task.log_info("出击模式探险结果: 失败")
         elif task.node_status.get('pass_final_boss_count', 0) == 0:
             task.log_info("出击模式探险结果: 失败")
+        else:
+            succeeded = True  # 只打第一层且已过第一层
     elif not complete_box and not failed_box:
         if _get_config_value(task, '只打第一层', False) and task.node_status.get('pass_final_boss_count', 0) >= 1: # 完成第一层任务
+            succeeded = True
             task.log_info("卡厄思模式探险结果: 成功")
         elif not _get_config_value(task, '只打第一层', False) and not task.node_status.get('is_escaped', 0): # 完成了任务且没有逃脱
+            succeeded = True
             task.node_status['success_rounds'] += 1
             task.log_info("卡厄思模式探险结果: 成功")
         else:
             task.log_info("卡厄思模式探险结果: 失败")
     else:
         task.log_info("卡厄思模式探险结果: 失败")
+    _record_round(task, succeeded)
     task.log_info(f"探险完成，成功次数/总次数={task.node_status['success_rounds']}/{task.node_status['total_rounds']}")
     if hasattr(task, 'node_status'):
         reset_mission_status(task)
