@@ -57,5 +57,48 @@ class TestSortieRewardSettlement(unittest.TestCase):
         self.click.assert_not_called()
 
 
+class TestRationalSupply(unittest.TestCase):
+    """理性不夠領額外戰利品時跳出補充理性：一律放棄、不花鑽石、不改設定；這一局之後不再按「獲得」。"""
+
+    def setUp(self):
+        for name in ("_move_and_click",):
+            for module in (utils, utils_sortie):
+                patcher = patch.object(module, name)
+                setattr(self, f"{module.__name__}_click", patcher.start())
+                self.addCleanup(patcher.stop)
+
+    def page(self, *texts):
+        t = task()
+        t.config["领取奖励"] = True
+        t.all_texts = list(texts)
+        t.click_box = lambda b: t.logs.append(f"click {b.name}")
+        return t
+
+    def test_always_cancels_and_keeps_config(self):
+        t = self.page(box("补充理性", 0.5, 0.17), box("确认", 0.664, 0.774))
+        self.assertTrue(utils_sortie.handle_rational_supply(t))
+        self.utils_sortie_click.assert_called_once_with(t, 0.352, 0.774)
+        self.assertTrue(t.node_status["rational_exhausted"])
+        self.assertTrue(t.config["领取奖励"])  # 不再把設定永久關掉
+
+    def test_no_more_claims_this_run(self):
+        t = self.page(box("结算", 0.550, 0.068), box("获得", 0.848, 0.389))
+        self.assertTrue(utils_sortie.handle_sortie_reward_settlement(t))
+        self.assertIn("click 获得", t.logs)  # 理性夠：領
+        t.logs.clear()
+        t.node_status["rational_exhausted"] = True
+        t.config["只打第一层"] = False
+        utils_sortie.handle_sortie_reward_settlement(t)
+        self.assertNotIn("click 获得", t.logs)  # 理性用完：不再按獲得
+        t.all_texts = [box("卡厄思战利品", 0.503, 0.335)]
+        utils_sortie.handle_sortie_reward_claim(t)
+        self.utils_sortie_click.assert_called_with(t, 0.355, 0.714)  # 戰利品視窗按放棄
+
+    def test_rational_supply_runs_before_confirm_handlers(self):
+        order = utils_sortie.PAGE_HANDLERS
+        self.assertLess(order.index(utils_sortie.handle_rational_supply), order.index(utils_sortie.handle_center_confirm))
+        self.assertLess(order.index(utils_sortie.handle_rational_supply), order.index(utils_sortie.handle_confirm))
+
+
 if __name__ == "__main__":
     unittest.main()

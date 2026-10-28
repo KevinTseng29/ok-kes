@@ -644,7 +644,7 @@ def handle_sortie_reward_settlement(task: TriggerTask):
     if not (title and title.name == "结算"):
         return False
     reward_box = find_box_at_point(task, 0.848, 0.389)
-    if reward_box and reward_box.name == "获得" and _get_config_value(task, "领取奖励", False):
+    if reward_box and reward_box.name == "获得" and _should_claim_reward(task):
         task.log_info("检测到出击模式奖励结算页面，领取奖励")
         task.click_box(reward_box)
         task.sleep(1)
@@ -665,7 +665,7 @@ def handle_sortie_reward_claim(task: TriggerTask):
     title = find_box_at_point(task, 0.503, 0.335)
     if not (title and re.search(r"卡.*思战利品", title.name)):
         return False
-    if _get_config_value(task, "领取奖励", False):
+    if _should_claim_reward(task):
         task.log_info("检测到出击模式奖励领取页面，领取卡厄思战利品")
         _move_and_click(task, 0.567, 0.708)
         task.sleep(1)
@@ -751,8 +751,17 @@ def handle_member_selection(task: TriggerTask):
     return True
 
 
+def _should_claim_reward(task: TriggerTask):
+    """要不要花理性领额外战利品：设定「领取奖励」打开，且这一局还没遇到理性不足。"""
+    return (bool(_get_config_value(task, "领取奖励", False))
+            and not task.node_status.get("rational_exhausted", False))
+
+
 def handle_rational_supply(task: TriggerTask):
-    """补充理性页面: 确认按钮未激活时关闭领取奖励并放弃补充。"""
+    """补充理性页面（理性不够领额外战利品时跳出）：一律放弃补充，绝不花钻石买理性。
+    这一局之后不再按「获得」（node_status 在下一局入场时重置，理性会自然恢复，下一局再试）。
+    原本只在确认键是灰的时才处理，确认键能按时会被前面的确认按钮处理函数点下去；
+    还会把「领取奖励」设定永久改成 False，理性恢复后也不会再领。"""
     # 在区域(0.438,0.101,0.561,0.250)内查找包含"补充理性"的文本
     x1, y1, x2, y2 = 0.438, 0.101, 0.561, 0.250
     title = next((b for b in task.all_texts
@@ -761,17 +770,13 @@ def handle_rational_supply(task: TriggerTask):
                   and "补充理性" in b.name), None)
     if not title:
         return False
-    task.log_info("检测到补充理性页面")
-    confirm_box = find_box_at_point(task, 0.664, 0.774)
-    if confirm_box and _clean_match(confirm_box.name, "确认") and not is_button_active(task, confirm_box):
-        task.log_info("确认按钮未激活，将领取奖励设置为False，点击放弃补充")
-        task.config['领取奖励'] = False
-        from ok.gui.Communicate import communicate
-        communicate.task_list_updated.emit()
-        _move_and_click(task, 0.352, 0.774)
-        task.sleep(1)
-        return True
-    return False
+    first_time = not task.node_status.get("rational_exhausted", False)
+    task.node_status["rational_exhausted"] = True
+    task.log_info("检测到补充理性页面：理性不足，点击放弃补充（不花钻石），这一局不再领额外战利品",
+                  notify=first_time)
+    _move_and_click(task, 0.352, 0.774)
+    task.sleep(1)
+    return True
 
 
 def handle_ether_supply(task: TriggerTask):
@@ -1032,6 +1037,7 @@ PAGE_HANDLERS = [
     handle_close_page, #点击屏幕关闭页面，优先于其他普通页面处理
 
     handle_ether_supply,
+    handle_rational_supply, #补充理性：一律放弃，排在确认按钮之前免得被点下去买理性
     handle_refine_equipment_credit, #提炼装备信用点页面，优先于确认按钮
     handle_center_confirm,
     handle_archive_target_member, #信息统计页面，避免出击模式卡住
@@ -1089,7 +1095,6 @@ PAGE_HANDLERS = [
     handle_view_original,
     handle_skip,
     handle_event_task,
-    handle_rational_supply,
     handle_weakness_info,
     handle_minimizemap,
     handle_held_cards_page,
