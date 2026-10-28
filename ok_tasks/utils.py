@@ -2673,37 +2673,55 @@ def _find_member_level_tags(task: TriggerTask, region, page="主战员选择页�
     return kept_level_tags
 
 
+# 主战员头像相似度至少要这么高才采用：认对约 0.84～0.86，认错（画面动画中、头像被挡住）约 0.63～0.65
+_TARGET_MEMBER_MIN_CONFIDENCE = 0.75
+
+
 def _find_target_member_index(
     task: TriggerTask,
     lv_texts,
     region,
     feature_name="target_member_small",
 ):
-    """在指定区域匹配目标成员头像，并返回距离最近的等级文本索引。"""
+    """在指定区域匹配目标成员头像，并返回距离最近的等级文本索引。
+    相似度不够就等画面稳定后重新截图再比一次；仍不够就沿用本局之前认到的位置（同一局队伍顺序不变），
+    都没有才回传 None。认错人会把装备（甚至稀有的传说装备）装给别人，还会读错主练的装备栏。"""
     if not lv_texts or not task.feature_exists(feature_name):
         return None
-    target_member_box = task.find_one(
-        feature_name=feature_name,
-        box=task.box_of_screen(*region),
-        threshold=0.4,
-    )
-    if not target_member_box:
-        return None
+    for attempt in range(2):
+        target_member_box = task.find_one(
+            feature_name=feature_name,
+            box=task.box_of_screen(*region),
+            threshold=0.4,
+        )
+        if target_member_box and target_member_box.confidence >= _TARGET_MEMBER_MIN_CONFIDENCE:
+            target_center_x = target_member_box.x + target_member_box.width / 2
+            target_center_y = target_member_box.y + target_member_box.height / 2
+            target_member_index = min(
+                range(len(lv_texts)),
+                key=lambda index: (
+                    (lv_texts[index].x + lv_texts[index].width / 2 - target_center_x) ** 2
+                    + (lv_texts[index].y + lv_texts[index].height / 2 - target_center_y) ** 2
+                ),
+            )
+            task._target_member_index = target_member_index
+            task.log_info(
+                f"刷存档主战员头像匹配成功，相似度={target_member_box.confidence:.4f}，"
+                f"绑定第{target_member_index + 1}号主战员"
+            )
+            return target_member_index
+        if attempt == 0:
+            confidence = f"{target_member_box.confidence:.4f}" if target_member_box else "无"
+            task.log_info(f"刷存档主战员头像相似度偏低（{confidence}），等画面稳定后重新比对")
+            guard.save_scene(task, "member_match", f"刷存档主战员头像相似度偏低：{confidence}")
+            task.sleep(0.6)
 
-    target_center_x = target_member_box.x + target_member_box.width / 2
-    target_center_y = target_member_box.y + target_member_box.height / 2
-    target_member_index = min(
-        range(len(lv_texts)),
-        key=lambda index: (
-            (lv_texts[index].x + lv_texts[index].width / 2 - target_center_x) ** 2
-            + (lv_texts[index].y + lv_texts[index].height / 2 - target_center_y) ** 2
-        ),
-    )
-    task.log_info(
-        f"刷存档主战员头像匹配成功，相似度={target_member_box.confidence:.4f}，"
-        f"绑定第{target_member_index + 1}号主战员"
-    )
-    return target_member_index
+    remembered = getattr(task, "_target_member_index", None)
+    if remembered is not None and remembered < len(lv_texts):
+        task.log_info(f"刷存档主战员头像仍未可靠识别，沿用本局之前认到的第{remembered + 1}号主战员")
+        return remembered
+    task.log_info("刷存档主战员头像未可靠识别，本局也还没认到过")
+    return None
 
 
 def handle_equipment(task: TriggerTask):
@@ -4971,6 +4989,7 @@ def reset_all_status(task: TriggerTask):
     if getattr(task, 'node_status', None) is not None:
         task.node_status = _initial_node_status()
     task.member_status = _initial_member_status()
+    task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)
     task._pending_removed_card_count = 0
     task._pending_removed_card_names = []
@@ -4995,6 +5014,7 @@ def reset_mission_status(task: TriggerTask):
         task.node_status['success_rounds'] = keep['success_rounds']
         task.node_status['save_target_member'] = keep['save_target_member']
     task.member_status = _initial_member_status()
+    task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)
     task._pending_removed_card_count = 0
     task._pending_removed_card_names = []
