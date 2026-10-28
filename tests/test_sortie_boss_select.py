@@ -43,6 +43,25 @@ class TestBossSelection(unittest.TestCase):
     def test_other_page(self):
         self.assertFalse(self.run_page("请选择1张欲获得的卡牌。")[0])
 
+    def boss_page(self, left, right):
+        t = SimpleNamespace(width=1280, height=720, logs=[],
+                            all_texts=[box("请选择在核心遭遇的BOSS。", 0.5, 0.93, w=0.26),
+                                       box(left[0], 0.358, 0.669), box(left[1], 0.358, 0.708),
+                                       box(right[0], 0.641, 0.669), box(right[1], 0.641, 0.708)])
+        t.log_info = lambda message, notify=False: t.logs.append(message)
+        t.sleep = lambda seconds: None
+        with patch.object(utils_sortie, "_move_and_click") as click:
+            self.assertTrue(utils_sortie.handle_boss_selection(t))
+        return click.call_args.args[1]
+
+    def test_avoids_listed_bosses(self):
+        for _ in range(10):  # 原本是隨機，多跑幾次確定每次都避開
+            self.assertEqual(self.boss_page(("瘟神", "某某"), ("戴奥斯", "塞拉菲翁")), 0.641)
+            self.assertEqual(self.boss_page(("尼希隆", "美梦"), ("金狮子", "某某")), 0.358)
+
+    def test_random_when_both_or_none_avoided(self):
+        self.assertIn(self.boss_page(("瘟神", "甲"), ("金狮子", "乙")), (0.358, 0.641))
+        self.assertIn(self.boss_page(("尼希隆", "美梦"), ("戴奥斯", "塞拉菲翁")), (0.358, 0.641))
 
 
 class TestDrawCardSelect(unittest.TestCase):

@@ -389,8 +389,12 @@ def _select_battle_member(task: TriggerTask, max_scrolls=5):
 
 # ------------------------- 出击模式独有页面处理函数 -------------------------
 
+# 尽量避开的首领：名称或上面那行系列名含这些字就不选（两个都含才随机）。使用者记得的名称可能和游戏里略有出入
+_AVOID_BOSS_KEYWORDS = ("瘟神", "金狮子", "金狮")
+
+
 def handle_boss_selection(task: TriggerTask):
-    """首领选择页面: 随机选择一个首领并确认。
+    """首领选择页面: 避开 _AVOID_BOSS_KEYWORDS 的首领，其余随机，选好后由确认按钮处理函数确认。
     简中「请选择在核心遇见的首领」、繁中「請選擇在核心遭遇的BOSS」（转简体后「遭遇的BOSS」）两种都认；
     原本只认简中，繁中每次换层都要等卡住兜底随机乱点才过。"""
     box = find_box_at_point(task, 0.484, 0.928)
@@ -399,12 +403,19 @@ def handle_boss_selection(task: TriggerTask):
     bosses = []
     for x, y in [(0.358, 0.706), (0.641, 0.706)]:
         name_box = find_box_at_point(task, x, y)
+        family_box = find_box_at_point(task, x, y - 0.038)  # 名称上面一行的系列名（尼希隆、戴奥斯…）
         if name_box:
-            bosses.append({"name": name_box.name, "x": x, "y": y})
+            bosses.append({"name": name_box.name, "family": family_box.name if family_box else "", "x": x, "y": y})
     if not bosses:
         return False
-    boss = random.choice(bosses)
-    task.log_info(f"首领选择: 随机选择「{boss['name']}」")
+    task.log_info(f"首领选择: 候选 {[(boss['family'], boss['name']) for boss in bosses]}")
+    preferred = [boss for boss in bosses
+                 if not any(keyword in boss["family"] + boss["name"] for keyword in _AVOID_BOSS_KEYWORDS)]
+    boss = random.choice(preferred or bosses)
+    if preferred and len(preferred) < len(bosses):
+        task.log_info(f"首领选择: 避开「{'、'.join(_AVOID_BOSS_KEYWORDS)}」，选择「{boss['name']}」")
+    else:
+        task.log_info(f"首领选择: 随机选择「{boss['name']}」")
     _move_and_click(task, boss["x"], boss["y"])
     task.sleep(1)
     # _move_and_click(task, 0.919, 0.930)
