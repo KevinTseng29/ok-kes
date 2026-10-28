@@ -975,9 +975,7 @@ def _open_all_decks_from_any_page(task):
     return False
 
 
-def _close_all_decks_page(task):
-    _close_deck_page(task)
-    task.sleep(0.5)
+def _close_combatant_page(task):
     task.all_texts = _simplify_texts(task.ocr())
     if _is_combatant_page(task):
         _move_and_click(task, *_COMBATANT_CLOSE_POINT)
@@ -986,6 +984,37 @@ def _close_all_decks_page(task):
             task.all_texts = _simplify_texts(task.ocr())
             if not _is_combatant_page(task):
                 break
+
+
+def _close_all_decks_page(task):
+    _close_deck_page(task)
+    task.sleep(0.5)
+    _close_combatant_page(task)
+
+
+def inventory_after_restart(task):
+    """重启 ok-kes（或重新开启任务）后第一次到路线选择页：先读一次主练的牌组，冥想、复制、商店、
+    选卡都改用画面上的实际数量，不用重启前的记忆。只做一次；动过画面回传 True（这一轮先不选路线）。"""
+    task._needs_inventory = False
+    if not getattr(task, "preset_deck_enabled", False):
+        return False
+    groups = build_groups(load_preset_records(task))
+    if not groups:
+        return False
+    task.log_info("重启后盘点：先读一次主练的牌组")
+    _invalidate_deck_cache(task)
+    if not _open_all_decks_from_any_page(task):
+        task.log_info("重启后盘点：打不开所有牌堆，之后遇到选卡时再读")
+        _close_combatant_page(task)
+        return True
+    _read_deck_counts(task, groups)
+    _close_combatant_page(task)
+    counts = getattr(task, "_preset_name_counts", None) or {}
+    task.log_info(
+        "重启后盘点完成：主练牌组 "
+        + "、".join(f"{name} {count}张" for name, count in counts.items())
+    )
+    return True
 
 
 def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=None):
@@ -1105,7 +1134,8 @@ def _read_deck_counts(task, groups):
         task.log_info("预设卡组: 复用本次灵光一闪的牌组统计缓存")
         return cached
 
-    if not _open_deck_page(task):
+    task.all_texts = _simplify_texts(task.ocr())
+    if not _is_deck_page(task) and not _open_deck_page(task):
         task.log_warning("预设卡组: 无法打开牌组页面")
         return None
 

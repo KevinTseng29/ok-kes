@@ -1997,6 +1997,7 @@ def restore_run_state(task: TriggerTask):
     if getattr(task, "_run_state_restored", False):
         return
     task._run_state_restored = True
+    task._needs_inventory = True  # 第一次到路线选择页时实际读一次牌组，修正记忆偏差
     try:
         from src import run_state
         snapshot = run_state.load(type(task).__name__)
@@ -3836,6 +3837,12 @@ def handle_route_selection(task: TriggerTask):
             task.node_status['precision_memory_visited'] = False
             task.log_info(f"离开路线选择页面，当前节点计数: {task.node_status['node_count']}")
         return False
+
+    # 重启 ok-kes 后第一次到路线选择页：先盘点主练牌组，再选路线（preset_deck.inventory_after_restart）
+    if getattr(task, "_needs_inventory", False):
+        from preset_deck import inventory_after_restart
+        if inventory_after_restart(task):
+            return True
 
     # 是路线选择页面，标记进入新节点
     if hasattr(task, 'node_status'):
