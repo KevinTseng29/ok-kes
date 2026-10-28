@@ -1977,6 +1977,53 @@ def log_credit(task: TriggerTask):
 #     return False
 
 
+def _save_run_state(task: TriggerTask, equipment):
+    """主练装备记录有变化就存档（src/run_state.py），重启 ok-kes 后由 restore_run_state 读回。"""
+    snapshot = {"equipment": {key: list(equipment.get(key) or []) for key in ("names", "descriptions", "qualities")}}
+    if snapshot == getattr(task, "_saved_run_state", None):
+        return
+    try:
+        from src import run_state
+        run_state.save(type(task).__name__, snapshot)
+        task._saved_run_state = snapshot
+    except Exception as e:
+        if not getattr(task, "_run_state_error_logged", False):
+            task._run_state_error_logged = True
+            task.log_info(f"保存本局状态失败：{e}")
+
+
+def restore_run_state(task: TriggerTask):
+    """重启后的第一轮：读回这一局之前存的主练装备（局结束会清掉，所以只会是同一局的）。"""
+    if getattr(task, "_run_state_restored", False):
+        return
+    task._run_state_restored = True
+    try:
+        from src import run_state
+        snapshot = run_state.load(type(task).__name__)
+    except Exception:
+        return
+    saved = (snapshot or {}).get("equipment")
+    equipment = _equipment_state(task)
+    if not isinstance(saved, dict) or any(equipment["names"]):
+        return
+    for key in ("names", "descriptions", "qualities"):
+        equipment[key] = [str(v or "") for v in (list(saved.get(key) or []) + ["", "", ""])[:3]]
+    task._saved_run_state = {"equipment": {key: list(equipment[key]) for key in ("names", "descriptions", "qualities")}}
+    task.log_info(
+        "读回这一局之前记录的主练装备："
+        + "，".join(f"{slot + 1}号位：{name or '空'}" for slot, name in enumerate(equipment["names"]))
+    )
+
+
+def _clear_run_state(task: TriggerTask):
+    try:
+        from src import run_state
+        run_state.clear(type(task).__name__)
+    except Exception:
+        pass
+    task._saved_run_state = None
+
+
 def log_node_status(task: TriggerTask):
     """记录当前胜率（仅记录, 不拦截后续处理）。"""
     ns = getattr(task, 'node_status', None)
@@ -2017,6 +2064,7 @@ def log_node_status(task: TriggerTask):
                 for slot, name in enumerate(equipment_names)
             ),
         )
+        _save_run_state(task, equipment)
         meditation_state = _member_deck_state(task).get("冥想", {})
         if isinstance(meditation_state, dict):
             for card_name, pending in meditation_state.items():
@@ -2571,7 +2619,18 @@ def _member_equipment_qualities(task: TriggerTask, level_box):
 
 
 def _should_install_equipment(task, current_name, current_quality, new_equipment):
-    """先比较配置装备优先级，优先级相同时再比较品质。"""
+    """先比较配置装备优先级，优先级相同时再比较品质。
+    装备栏有东西但不知道名字（记录丢了、或手动换过）时不看优先级、只比品质，
+    免得把不知道名字的稀有装备（例如混沌指控）换成优先级列表里较差的装备。"""
+    if not current_name and current_quality:
+        current_quality_rank = _EQUIPMENT_QUALITY_RANKS.get(current_quality, 0)
+        new_quality_rank = _EQUIPMENT_QUALITY_RANKS.get(new_equipment.get("quality") or "", 0)
+        return (
+            new_quality_rank > current_quality_rank,
+            f"当前装备名称未知（品质{current_quality}），只比品质："
+            f"{new_equipment.get('quality') or '未知'}"
+            f"{'高于' if new_quality_rank > current_quality_rank else '不高于'}{current_quality}",
+        )
     priority = new_equipment["priority"]
     _, current_rank = _match_equipment_name(current_name, priority)
     new_rank = new_equipment["rank"]
@@ -5000,6 +5059,7 @@ def reset_all_status(task: TriggerTask):
     task._removal_deck_counts = None
     task._removal_deck_counts_time = 0
     task._memory_engrave_leave_count = 0
+    task._run_state_restored = False  # 重新开启任务也可能是同一局中途，下一轮读回存档
 
 
 def reset_mission_status(task: TriggerTask):
@@ -5014,6 +5074,7 @@ def reset_mission_status(task: TriggerTask):
         task.node_status['success_rounds'] = keep['success_rounds']
         task.node_status['save_target_member'] = keep['save_target_member']
     task.member_status = _initial_member_status()
+    _clear_run_state(task)  # 这一局结束，存档的主练装备不再适用
     task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)
     task._pending_removed_card_count = 0

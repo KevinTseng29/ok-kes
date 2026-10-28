@@ -16,6 +16,7 @@ from config_sync import check_upload_if_needed, show_hot_configs_dialog
 from members import MEMBER_NAMES
 from utils import (
     reset_all_status,
+    restore_run_state,
     _migrate_route_boss_to_elite,
     _simplify_texts,
     _disable_other_chaos_tasks,
@@ -162,6 +163,8 @@ class ChaosMode(HumanizeMixin, TriggerTask):
 
     @guarded_run
     def run(self):
+        # 重启 ok-kes 后第一轮读回这一局的主练装备记录（只读一次）
+        restore_run_state(self)
         # 每帧执行一次 OCR 并转简体, 供各页面处理函数复用
         self.all_texts = _simplify_texts(self.ocr())
         # 依次尝试各页面处理函数, 命中(返回 True)即结束本次循环
