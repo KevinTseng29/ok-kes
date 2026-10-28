@@ -4844,6 +4844,17 @@ def handle_escape(task: TriggerTask):
 #             task.node_status['final_boss_battle'] = False
 #     return False
 
+def stop_if_round_finished(task: TriggerTask):
+    """「打完这局停止」（运行总览的按钮设 task._stop_after_round）：卡厄思在下一局的入口页、
+    出击在探险结果记录后停止任务，结算与存档都已做完。停了回传 True。"""
+    if not getattr(task, "_stop_after_round", False):
+        return False
+    task._stop_after_round = False
+    task.log_info("这一局已打完，按「打完这局停止」停止任务", notify=True)
+    task.disable()
+    return True
+
+
 def _record_round(task: TriggerTask, succeeded):
     """这一局的结果记进跨重启的战绩（src/run_stats.py，运行总览分页显示）；出错不影响流程。"""
     try:
@@ -4900,6 +4911,9 @@ def handle_expedition_result(task: TriggerTask):
     task.log_info(f"探险完成，成功次数/总次数={task.node_status['success_rounds']}/{task.node_status['total_rounds']}")
     if hasattr(task, 'node_status'):
         reset_mission_status(task)
+    # 卡厄思等到下一局的入口页才停（结算、存档还没做完）；出击这里就停
+    if not _is_chaos_mode_task(task) and stop_if_round_finished(task):
+        return True
     return False
 
 

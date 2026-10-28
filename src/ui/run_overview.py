@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (BodyLabel, CaptionLabel, CheckBox, FluentIcon, MessageBox,
                             NavigationItemPosition, PlainTextEdit, PushButton, SmoothScrollArea, StrongBodyLabel,
-                            isDarkTheme)
+                            TogglePushButton, isDarkTheme)
 
 from ok import og
 from ok.gui.Communicate import communicate
@@ -124,6 +124,10 @@ class RunOverviewTab(CustomTab):
         layout.addWidget(_section(_tr('本局')))
         self.run_label = _value_label()
         layout.addWidget(self.run_label)
+        # 打完這一局（卡厄思：結算、存檔做完回到入口頁；出擊：探險結果後）就停止任務
+        self.stop_button = TogglePushButton(_tr('打完这局停止'))
+        self.stop_button.toggled.connect(self._toggle_stop_after_round)
+        layout.addWidget(self.stop_button)
         layout.addWidget(_section(_tr('主练')))
         self.member_label = _value_label()
         layout.addWidget(self.member_label)
@@ -159,6 +163,7 @@ class RunOverviewTab(CustomTab):
             self.stats_label.setText(self._stats_html())
             task = self._active_task()
             self.run_label.setText(self._run_html(task))
+            self._sync_stop_button(task)
             member_html, member_tip = self._member_html(task)
             self.member_label.setText(member_html)
             self.member_label.setToolTip(member_tip)
@@ -231,6 +236,22 @@ class RunOverviewTab(CustomTab):
             color = 'gray' if done else ('#d08700' if owned else 'inherit')
             lines.append(f"<span style='color:{color}'>{html.escape(_show(card))}　{have}/{needed}</span>")
         return lines
+
+    def _sync_stop_button(self, task):
+        wanted = bool(task is not None and getattr(task, '_stop_after_round', False))
+        self.stop_button.setEnabled(task is not None)
+        if self.stop_button.isChecked() != wanted:
+            self.stop_button.blockSignals(True)
+            self.stop_button.setChecked(wanted)
+            self.stop_button.blockSignals(False)
+        self.stop_button.setText(_tr('本局结束后停止（再按取消）') if wanted else _tr('打完这局停止'))
+
+    def _toggle_stop_after_round(self, checked):
+        task = self._active_task()
+        if task is not None:
+            task._stop_after_round = checked
+            self.logger.info(f'打完这局停止: {checked}')
+        self._sync_stop_button(task)
 
     def _reset_stats(self):
         box = MessageBox(_tr('重置战绩'), _tr('清空今日与全部战绩，从现在重新累计？'), self.window())

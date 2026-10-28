@@ -27,6 +27,7 @@ from utils import (
 )
 from navigation import handle_chaos_navigation
 from dialogue import mark_battle
+from utils import stop_if_round_finished
 import guard
 
 from preset_deck import (
@@ -238,6 +239,8 @@ def handle_season_chaos_initial_page(task: TriggerTask):
         return False
 
     task.log_info("检测到赛季卡厄思初始页面")
+    if stop_if_round_finished(task):
+        return True
     task._chaos_kind = "赛季卡厄思"  # 目录记录来源用
     value_text = _get_region_text(task, (0.684, 0.308, 0.982, 0.754))
     value_match = _match_storage_data_value(task, value_text)
@@ -276,6 +279,8 @@ def handle_zero_system_initial_page(task: TriggerTask):
         return False
 
     task.log_info("检测到零式系统初始页面")
+    if stop_if_round_finished(task):
+        return True
     task._chaos_kind = "零号系统"  # 目录记录来源用
     value_text = _get_region_text(task, (0.685, 0.317, 0.980, 0.825))
     value_match = _match_storage_data_value(task, value_text)

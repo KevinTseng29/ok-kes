@@ -830,6 +830,10 @@ msgid "本局"
 msgstr "本局"
 
 #: src/ui/run_overview.py
+msgid "打完这局停止"
+msgstr "打完這局停止"
+
+#: src/ui/run_overview.py
 msgid "主练"
 msgstr "主練"
 
@@ -872,6 +876,10 @@ msgstr "裝備"
 #: src/ui/run_overview.py
 msgid "号位"
 msgstr "號位"
+
+#: src/ui/run_overview.py
+msgid "本局结束后停止（再按取消）"
+msgstr "本局結束後停止（再按取消）"
 
 #: src/ui/run_overview.py
 msgid "清空今日与全部战绩，从现在重新累计？"
