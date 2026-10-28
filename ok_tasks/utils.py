@@ -5097,8 +5097,11 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         _confirm_divine_flash(task)
         return True
 
-    if not chosen_card and flash_priority and _hunting_specific_flash(task):
-        # 三选一没有指定效果：按跳过，留到下一个篝火再闪；触发的神闪没有跳过按钮，只能随便选
+    target_card = next(iter(_get_card_list(task, "闪光卡牌列表")), "")
+    if (not chosen_card and flash_priority and target_card and _hunting_specific_flash(task)
+            and any(target_card in card["name"] for card in cards)):
+        # 要刷的那张卡（闪光卡牌列表第一张）三选一没有指定效果：按跳过，留到下一个篝火再闪；
+        # 触发的神闪没有跳过按钮，只能随便选。事件送的其他卡的灵光一闪照常选（23:45 聚光灯被误跳过）
         names = [card["name"] for card in cards]
         if _find_flash_skip_box(task) is not None:
             task.log_info(f"首层刷特定闪光：三选一{names}没有「{flash_priority[0]}」，跳过，留到下一个篝火")

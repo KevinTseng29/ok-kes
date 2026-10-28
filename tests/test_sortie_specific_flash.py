@@ -27,7 +27,8 @@ class TestSpecificFlash(unittest.TestCase):
 
     def run_page(self, cards, texts=(), experimental=True, floor=0, obtained=False):
         t = SimpleNamespace(width=1280, height=720, logs=[], all_texts=list(texts),
-                            config={"首层刷特定闪光": True, "闪光优先级": ["琶音", "移动至手牌并发动"]},
+                            config={"首层刷特定闪光": True, "闪光优先级": ["琶音", "移动至手牌并发动"],
+                                    "闪光卡牌列表": ["音乐开始", "聚光灯"]},
                             node_status={"pass_final_boss_count": floor, "get_specific_flash": obtained})
         if experimental:
             t.specific_flash_skip = True
@@ -52,6 +53,13 @@ class TestSpecificFlash(unittest.TestCase):
         self.assertIn("click_skip", t.logs)
         click.assert_not_called()
         self.assertFalse(t.node_status["get_specific_flash"])
+
+    def test_other_card_flash_not_skipped(self):
+        """事件送的其他卡（聚光燈）靈光一閃：不是要刷的那張，沒命中優先級照常隨機選，不跳過。"""
+        spotlight = [{"name": "聚光灯", "description": "造成伤害", "x": 0.25, "y": 0.4}]
+        t, click = self.run_page(spotlight, texts=[skip_box()])
+        click.assert_called_once()
+        self.assertNotIn("click_skip", t.logs)
 
     def test_unskippable_divine_picks_any(self):
         t, click = self.run_page(PLAIN)  # 觸發的神閃：畫面上沒有「跳过」
