@@ -2573,6 +2573,13 @@ def _current_equipment_for_slot(task: TriggerTask, equipment, slot):
     return equipment_name, _equipment_rank(equipment_name, priority)
 
 
+def _equipment_slot_empty(equipment, slot):
+    """名称和品质都没有记录才算空栏：重启后名称丢了，但安装界面读到的品质还在，那一格其实有装备。"""
+    names = equipment.get("names", [])
+    qualities = equipment.get("qualities", [])
+    return not (slot < len(names) and names[slot]) and not (slot < len(qualities) and qualities[slot])
+
+
 def _pixel_rgb(task: TriggerTask, point):
     """读取归一化坐标的像素，并将 OpenCV BGR 转为 RGB。"""
     if task.frame is None:
@@ -3171,7 +3178,7 @@ def handle_equipment(task: TriggerTask):
     if chosen_index is None:
         empty_slot_candidates = [
             candidate for candidate in candidates
-            if not _current_equipment_for_slot(task, equipment, candidate["slot"])[0]
+            if _equipment_slot_empty(equipment, candidate["slot"])
         ]
         if empty_slot_candidates:
             chosen_candidate = random.choice(empty_slot_candidates)

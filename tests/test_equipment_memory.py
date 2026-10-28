@@ -41,6 +41,14 @@ class TestUnknownEquipment(unittest.TestCase):
         self.assertTrue(utils._should_install_equipment(None, "", "", new_item("符文图样之锤", "史诗"))[0])
 
 
+class TestEmptySlot(unittest.TestCase):
+    """選擇裝備界面「優先選空缺位置」：重啟後名稱丟了但品質還在的那格不算空。"""
+
+    def test_empty_only_without_name_and_quality(self):
+        equipment = {"names": ["", "", "混沌指控"], "qualities": ["", "史诗", "传说"]}
+        self.assertEqual([utils._equipment_slot_empty(equipment, slot) for slot in range(3)], [True, False, False])
+
+
 class TestRestoreRunState(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
