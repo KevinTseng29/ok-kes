@@ -3112,6 +3112,10 @@ def handle_select_card(task: TriggerTask):
     action_tip = find_box_at_point(task, 0.945, 0.918)
     if action_tip:
         task.log_info(f"右下角选牌操作提示: 「{action_tip.name}」")
+        if "再次灵光" in action_tip.name:
+            # 冥想（再次灵光一闪）：接下来的灵光一闪页是换掉原本已有的效果，
+            # 预设卡组没有符合目标的选项时要跳过，不能随机选（preset_deck._fallback_choice）
+            task._preset_reflash_until = time.time() + 90
 
     if (
         action in ("移除", "复制", "闪光", "灵光")
@@ -4706,6 +4710,9 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         except Exception as exc:
             task.log_error("预设卡组选择失败，回退闪光优先级", exc)
             chosen_card = None
+        if isinstance(chosen_card, dict) and chosen_card.get("skip"):
+            _click_flash_skip(task)
+            return True
         if chosen_card is not None:
             task.log_info(
                 f"预设卡组: 本次最终选择「{chosen_card.get('name', '')}」"
@@ -4755,12 +4762,37 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         return True
 
     if not chosen_card:
+        if time.time() < (getattr(task, "_preset_reflash_until", 0) or 0):
+            # 冥想（再次灵光一闪）没命中闪光优先级：随机选会换掉原本的效果，改为跳过
+            task._preset_reflash_until = 0
+            _click_flash_skip(task)
+            return True
         chosen_card = random.choice(cards)
         task.log_info(f"随机选择「{chosen_card['name']}」")
 
+    task._preset_reflash_until = 0
     _move_and_click(task, chosen_card['x'], chosen_card['y'])
     _confirm_divine_flash(task)
     return True
+
+
+def _click_flash_skip(task: TriggerTask):
+    """灵光一闪页面右下角的「跳过」：冥想时没有符合目标的选项，保留原本的卡牌效果。"""
+    skip_box = next(
+        (
+            b for b in task.all_texts
+            if "跳过" in b.name
+            and (b.x + b.width / 2) / task.width >= 0.7
+            and (b.y + b.height / 2) / task.height >= 0.85
+        ),
+        None,
+    )
+    task.log_info("灵光一闪页面：点击「跳过」，保留原本的卡牌效果")
+    if skip_box is not None:
+        task.click_box(skip_box)
+    else:
+        _move_and_click(task, 0.948, 0.929)
+    task.sleep(1)
 
 
 def _confirm_divine_flash(task: TriggerTask):

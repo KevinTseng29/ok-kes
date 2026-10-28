@@ -1271,10 +1271,22 @@ def _ensure_three_cards(task, cards):
     return cards
 
 
+SKIP_CHOICE = {"skip": True}  # handle_view_original 看到就点「跳过」
+
+
+def _reflash_active(task):
+    """这一页是冥想（再次灵光一闪）：handle_select_card 看到「再次灵光一闪」时设的期限内。"""
+    return time.time() < (getattr(task, "_preset_reflash_until", 0) or 0)
+
+
 def _fallback_choice(task, cards):
-    """效果/神闪都不符合时：非神闪随机；三张全神闪选第一张。"""
+    """效果/神闪都不符合时：非神闪随机；三张全神闪选第一张。
+    冥想（再次灵光一闪）时则跳过：随机选会换掉原本已有的效果，让进度倒退。"""
     if not cards:
         return None
+    if _reflash_active(task):
+        task.log_info("预设卡组: 这是冥想（再次灵光一闪），没有符合目标的选项，跳过以保留原本的卡牌效果")
+        return SKIP_CHOICE
     normal_cards = [card for card in cards if not _card_has_big_divine(task, card)]
     if normal_cards:
         choice = random.choice(normal_cards)
@@ -1643,6 +1655,7 @@ def handle_preset_deck_flash(task: TriggerTask):
         page_confirmed=True,
     )
     _invalidate_deck_cache(task)
+    task._preset_reflash_until = 0
     return result
 
 
