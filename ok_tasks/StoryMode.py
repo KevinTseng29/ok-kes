@@ -22,9 +22,9 @@ class StoryMode(HumanizeMixin, TriggerTask):
         _disable_other_chaos_tasks(self)
         from SortieMode import SortieMode
         from ChaosMode import ChaosMode
-        sortie = og.executor.get_task_by_class(SortieMode)
-        if sortie and sortie.enabled:
-            sortie.disable()
+        for sortie in getattr(og.executor, "trigger_tasks", []) or []:
+            if isinstance(sortie, SortieMode) and sortie.enabled:  # 含出击实验模式
+                sortie.disable()
         chaos = og.executor.get_task_by_class(ChaosMode)
         if chaos and chaos.enabled:
             chaos.disable()

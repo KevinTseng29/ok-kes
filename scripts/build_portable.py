@@ -51,7 +51,7 @@ def main():
         command += ["--collect-all", package]
     # The framework discovers these tasks by name from configuration/AST.
     for module in ("src.globals", "src.tasks.MyOneTimeTask", "src.packaging_smoke",
-                   "ChaosMode", "ChaosModeExperimental", "SortieMode", "StoryMode",
+                   "ChaosMode", "ChaosModeExperimental", "SortieMode", "SortieModeExperimental", "StoryMode",
                    "preset_deck", "preset_deck_ui", "preset_deck_import", "src.czn_deckcode", "config_io",
                    "config_sync", "utils", "utils_chaos", "utils_sortie", "win32timezone"):
         command += ["--hidden-import", module]

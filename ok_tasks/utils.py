@@ -136,7 +136,7 @@ def _catalog_source(task: TriggerTask):
     """目录来源：出击模式记「出击」；卡厄思模式记目前是零号系统或赛季卡厄思（看过对应页面后才知道），
     还分不出来时记「卡厄思」。"""
     task_class = type(task).__name__
-    if task_class == "SortieMode":
+    if task_class.startswith("SortieMode"):  # 含实验模式
         return "出击"
     if task_class.startswith("ChaosMode"):  # 含实验模式
         return getattr(task, "_chaos_kind", "") or "卡厄思"
@@ -1211,7 +1211,7 @@ def find_best_map_route_by_priority(map_info, node_type_priority, weights=None, 
 # 记住目前走到哪个节点，画面上可选的节点和记录对不上就下次重新扫描。
 
 def _uses_big_map(task: TriggerTask):
-    return type(task).__name__ == "SortieMode"
+    return type(task).__name__.startswith("SortieMode")  # 含实验模式
 
 
 def scan_big_map(task: TriggerTask):
@@ -3410,7 +3410,11 @@ def handle_select_card(task: TriggerTask):
     ):
         _scroll_to_target_member_for_card_removal(task)
 
-    result = select_card(task, _get_card_list(task, config_key), count=count, action=action)
+    card_list = _get_card_list(task, config_key)
+    if action in ("闪光", "灵光") and _specific_flash_enabled(task) and task.node_status.get("get_specific_flash"):
+        # 已刷到指定闪光：列表第一张（要刷的那张）不再闪，改闪其余的卡
+        card_list = card_list[1:]
+    result = select_card(task, card_list, count=count, action=action)
     if not result and action in ("闪光", "灵光"):
         skip_box = next(
             (
@@ -4980,6 +4984,19 @@ def handle_shop(task: TriggerTask):
     return False
 
 
+def _specific_flash_enabled(task: TriggerTask):
+    """出击实验模式勾了「首层刷特定闪光」（卡厄思模式的同名设定维持原本行为：没命中就随机选）。"""
+    return (getattr(task, "specific_flash_skip", False)
+            and _get_config_value(task, "首层刷特定闪光", False) is True)
+
+
+def _hunting_specific_flash(task: TriggerTask):
+    """第一层还在刷指定闪光。"""
+    status = getattr(task, "node_status", None) or {}
+    return (_specific_flash_enabled(task) and not status.get("get_specific_flash", False)
+            and status.get("pass_final_boss_count", 0) == 0)
+
+
 def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=False):
     """卡牌闪光（查看原件）事件: 按类型特征识别卡牌，并按闪光优先级选择。
 
@@ -5061,6 +5078,15 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         _confirm_divine_flash(task)
         return True
 
+    if not chosen_card and flash_priority and _hunting_specific_flash(task):
+        # 三选一没有指定效果：按跳过，留到下一个篝火再闪；触发的神闪没有跳过按钮，只能随便选
+        names = [card["name"] for card in cards]
+        if _find_flash_skip_box(task) is not None:
+            task.log_info(f"首层刷特定闪光：三选一{names}没有「{flash_priority[0]}」，跳过，留到下一个篝火")
+            _click_flash_skip(task)
+            return True
+        task.log_info(f"首层刷特定闪光：三选一{names}没有「{flash_priority[0]}」也不能跳过，随便选一个")
+
     if not chosen_card:
         if time.time() < (getattr(task, "_preset_reflash_until", 0) or 0):
             # 冥想（再次灵光一闪）没命中闪光优先级：随机选会换掉原本的效果，改为跳过
@@ -5076,9 +5102,9 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
     return True
 
 
-def _click_flash_skip(task: TriggerTask):
-    """灵光一闪页面右下角的「跳过」：冥想时没有符合目标的选项，保留原本的卡牌效果。"""
-    skip_box = next(
+def _find_flash_skip_box(task: TriggerTask):
+    """灵光一闪页面右下角的「跳过」文字框；触发的神闪等不能跳过的页面没有它。"""
+    return next(
         (
             b for b in task.all_texts
             if "跳过" in b.name
@@ -5087,6 +5113,11 @@ def _click_flash_skip(task: TriggerTask):
         ),
         None,
     )
+
+
+def _click_flash_skip(task: TriggerTask):
+    """灵光一闪页面右下角的「跳过」：冥想时没有符合目标的选项，保留原本的卡牌效果。"""
+    skip_box = _find_flash_skip_box(task)
     task.log_info("灵光一闪页面：点击「跳过」，保留原本的卡牌效果")
     if skip_box is not None:
         task.click_box(skip_box)

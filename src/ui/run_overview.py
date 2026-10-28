@@ -23,9 +23,9 @@ from ok.gui.widget.CustomTab import CustomTab
 from src import run_overview_data as data
 from src import run_stats
 
-MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieMode', 'StoryMode')
+MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieModeExperimental', 'SortieMode', 'StoryMode')
 # 戰績分組：卡厄思（含實驗版）與出擊分開算
-STAT_GROUPS = (('卡厄思', ('ChaosModeExperimental', 'ChaosMode')), ('出击', ('SortieMode',)))
+STAT_GROUPS = (('卡厄思', ('ChaosModeExperimental', 'ChaosMode')), ('出击', ('SortieModeExperimental', 'SortieMode')))
 
 
 def install():

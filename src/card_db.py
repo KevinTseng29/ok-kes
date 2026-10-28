@@ -174,7 +174,7 @@ def default_team(db, config, mode):
     """沒有記住的隊伍時：卡厄思取刷存档主战员，出擊取出战主战员优先级的前三位（只留資料庫認得的）。"""
     if mode in ('ChaosMode', 'ChaosModeExperimental'):
         candidates = [config.get('刷存档主战员', '')]
-    elif mode == 'SortieMode':
+    elif mode in ('SortieMode', 'SortieModeExperimental'):
         candidates = list(config.get('出战主战员优先级', []) or [])[:3]
     else:
         candidates = []

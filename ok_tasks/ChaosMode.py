@@ -146,9 +146,9 @@ class ChaosMode(HumanizeMixin, TriggerTask):
         """开启卡厄思模式时自动禁用出击/剧情/实验模式，重置状态并迁移配置。"""
         _disable_other_chaos_tasks(self)
         from SortieMode import SortieMode
-        sortie = og.executor.get_task_by_class(SortieMode)
-        if sortie and sortie.enabled:
-            sortie.disable()
+        for sortie in getattr(og.executor, "trigger_tasks", []) or []:
+            if isinstance(sortie, SortieMode) and sortie.enabled:  # 含出击实验模式
+                sortie.disable()
         reset_all_status(self)
         _migrate_route_boss_to_elite(self)
         guard.reset(self)

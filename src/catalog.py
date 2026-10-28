@@ -26,7 +26,7 @@ KIND_NAMES = {'event': '事件任务', 'card': '卡牌', 'equipment': '装备'}
 # 來源：模式 → 可能的來源（卡厄思模式分不出種類時記成「卡厄思」）
 SORTIE_SOURCE = '出击'
 CHAOS_SOURCES = ('零号系统', '赛季卡厄思', '卡厄思')
-MODE_SOURCES = {'SortieMode': (SORTIE_SOURCE,), 'ChaosMode': CHAOS_SOURCES,
+MODE_SOURCES = {'SortieMode': (SORTIE_SOURCE,), 'SortieModeExperimental': (SORTIE_SOURCE,), 'ChaosMode': CHAOS_SOURCES,
                 'ChaosModeExperimental': CHAOS_SOURCES}
 CONFIG_NAME = '目录设置'
 ENABLED_KEY = '自动收集目录'

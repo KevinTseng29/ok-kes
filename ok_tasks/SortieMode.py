@@ -108,6 +108,10 @@ class SortieMode(HumanizeMixin, TriggerTask):
         chaos = og.executor.get_task_by_class(ChaosMode)
         if chaos and chaos.enabled:
             chaos.disable()
+        # 出击模式与出击实验模式（子类）只能开一个
+        for other in getattr(og.executor, "trigger_tasks", []) or []:
+            if other is not self and isinstance(other, SortieMode) and other.enabled:
+                other.disable()
         reset_all_status(self)
         _migrate_route_boss_to_elite(self)
         guard.reset(self)
