@@ -116,6 +116,22 @@ class TestApAware(unittest.TestCase):
         self.assertEqual(run_battle(t, 2, [[hand[0]]])[-1], "e")  # AP 0、剩 2 費：結束回合
 
 
+class TestArpeggioSearchFirst(unittest.TestCase):
+    """手上只有琶音5、0～4 都還沒打：先打聚光燈把前面的琶音檢索上來，不先打琶音5。"""
+
+    def test_search_before_late_arpeggio(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["琶音", "聚光灯"]}
+        hand = [{"name": "节奏：琶音（5）", "key": "1"}, {"name": "聚光灯", "key": "2"}]
+        self.assertEqual(run_battle(t, 2, [hand]), ["2", "enter"])
+
+    def test_play_arpeggio_in_order(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["琶音", "聚光灯"]}
+        hand = [{"name": "琶音（0）", "key": "1"}, {"name": "聚光灯", "key": "2"}]
+        self.assertEqual(run_battle(t, 2, [hand]), ["1", "enter"])
+
+
 class TestEndTurnWhenNothingPlayable(unittest.TestCase):
     """兜底每張都按過、手牌卻沒變（AP 不夠）：自己按 E；手牌變了就照常繼續出牌。"""
 

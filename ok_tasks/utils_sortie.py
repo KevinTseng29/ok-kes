@@ -119,11 +119,32 @@ def _card_cost(task: TriggerTask, name_box):
     return best[1] if best else None
 
 
+_AP_REGION = (0.477, 0.889, 0.523, 0.958)  # 下方中间 AP 数字（不含下面的手牌数 05/10）
+
+
 def _read_ap(task: TriggerTask):
-    """画面下方中间的大数字是目前的 AP（费用）；认不到回传 None。"""
+    """画面下方中间的大数字是目前的 AP（费用）；认不到回传 None。
+    数字是白字加蓝色光晕、背后叠着卡图，整张画面的 OCR 常漏掉：先看整张的结果，没有再把那一小块放大 3 倍单独 OCR。"""
     box = find_box_at_point(task, 0.499, 0.928)
     text = box.name.strip() if box else ""
-    return int(text) if text.isdigit() and len(text) <= 2 else None
+    if text.isdigit() and len(text) <= 2:
+        return int(text)
+    ocr = getattr(task, "ocr", None)
+    if ocr is None:
+        return None
+    try:
+        boxes = ocr(*_AP_REGION, target_height=int((_AP_REGION[3] - _AP_REGION[1]) * task.height * 3))
+    except Exception as e:
+        task.log_info(f"读取 AP 失败：{e}")
+        return None
+    digits = [b for b in boxes or [] if b.name.strip().isdigit() and len(b.name.strip()) <= 2]
+    if not digits:
+        return None
+    best = max(digits, key=lambda b: getattr(b, "confidence", 0))
+    return int(best.name.strip())
+
+
+_SEARCH_CARD_KEYWORDS = ("聚光灯",)  # 能检索琶音的卡（打出后跳「请选择…张…卡牌」检索页）
 
 
 def _affordable(card, ap):
@@ -584,6 +605,22 @@ def handle_battle_page(task: TriggerTask):
         if not hasattr(task, '_last_attempted_card'):
             task._last_attempted_card = None
 
+        # 琶音要照 0→5 打（前面的打过后面的才会降费）。手上最小的琶音比下一个该打的编号大（例如只有琶音5、0～4 都没打），
+        # 又有检索牌（聚光灯）打得起，就先打检索牌把前面的琶音拿上来，不先打琶音5
+        played = getattr(task, "_arpeggio_played", set())
+        next_arpeggio = min(set(range(6)) - played, default=6)
+        arpeggios = [c for c in cards if "琶音" in c["name"] and _card_sequence_number(c) < 99]
+        searchers = [c for c in cards if any(k in c["name"] for k in _SEARCH_CARD_KEYWORDS)
+                     and c["key"] is not None and _affordable(c, ap)]
+        if arpeggios and searchers and min(map(_card_sequence_number, arpeggios)) > next_arpeggio:
+            searcher = searchers[0]
+            task.log_info(f"手上的琶音{sorted(map(_card_sequence_number, arpeggios))}前面还缺（下一个该打{next_arpeggio}），"
+                          f"先打检索牌「{searcher['name']}」→ 按键 {searcher['key']}")
+            task.send_key(searcher["key"])
+            task.sleep(1)
+            task.send_key("enter")
+            task.sleep(2)
+            return True
         # 检查"出牌优先级"配置
         play_priority = _get_config_value(task, "出牌优先级", [])
         if play_priority and cards:
