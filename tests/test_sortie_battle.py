@@ -135,7 +135,7 @@ class TestChainedArpeggio(unittest.TestCase):
 
     def test_auto_played_recorded(self):
         t = battle_task()
-        t.config = {"出牌优先级": ["琶音"]}
+        t.config = {"出牌优先级": ["琶音", "小丑"]}
         before = [{"name": f"节奏：琶音（{n}）", "key": str(i + 1)} for i, n in enumerate((2, 3, 4))]
         after = [{"name": "小丑", "key": "1"}]
         run_battle(t, 2, [before])
@@ -157,6 +157,16 @@ class TestArpeggioSearchFirst(unittest.TestCase):
         t.config = {"出牌优先级": ["琶音", "聚光灯"]}
         hand = [{"name": "琶音（0）", "key": "1"}, {"name": "聚光灯", "key": "2"}]
         self.assertEqual(run_battle(t, 2, [hand]), ["1", "enter"])
+
+
+class TestApGlyph(unittest.TestCase):
+    """AP 的「1」太細 OCR 常認不出：用白色字形的寬高比補判（實機截圖 tests/fixtures/ap）。"""
+
+    def test_one_vs_three(self):
+        import cv2
+        folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "ap")
+        self.assertTrue(utils_sortie._ap_glyph_is_one(cv2.imread(os.path.join(folder, "ap_1.png"))))
+        self.assertFalse(utils_sortie._ap_glyph_is_one(cv2.imread(os.path.join(folder, "ap_3.png"))))
 
 
 class TestEndTurnWhenNothingPlayable(unittest.TestCase):

@@ -4423,8 +4423,13 @@ def handle_select(task: TriggerTask):
     """通用"选择"按钮。"""
     box = find_box_at_point(task, 0.945, 0.918)
     if box and _clean_match(box.name, "选择"):
+        title = find_box_at_point(task, 0.499, 0.131)
+        hand_count = find_box_at_point(task, 0.513, 0.975)
+        if title and hand_count and re.search(r"\d+/10", hand_count.name) and "选择" in title.name:
+            task.log_info(f"战斗中的选卡页「{title.name}」：不直接按选择，交给检索选卡处理")
+            return False
         if is_button_active(task, box):
-            task.log_info("检测到选择按钮，点击选择")
+            task.log_info(f"检测到选择按钮，点击选择（标题：{title.name if title else '无'}）")
             task.click_box(box)
             task.sleep(1)
             return True

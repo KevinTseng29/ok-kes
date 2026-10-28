@@ -35,6 +35,7 @@ import re
 import time
 import random
 import cv2
+import numpy as np
 
 
 # ------------------------- 出击模式独有工具 -------------------------
@@ -125,7 +126,7 @@ def _card_cost(task: TriggerTask, name_box):
     return best[1] if best else None
 
 
-_AP_REGION = (0.477, 0.889, 0.523, 0.958)  # 下方中间 AP 数字（不含下面的手牌数 05/10）
+_AP_REGION = (0.4766, 0.889, 0.5234, 0.972)  # 下方中间 AP 数字（不含下面的手牌数 05/10）
 
 
 def _read_ap(task: TriggerTask):
@@ -135,19 +136,49 @@ def _read_ap(task: TriggerTask):
     text = box.name.strip() if box else ""
     if text.isdigit() and len(text) <= 2:
         return int(text)
-    ocr = getattr(task, "ocr", None)
-    if ocr is None:
+    frame = getattr(task, "frame", None)
+    if frame is None or not hasattr(frame, "shape"):
+        return None
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = _AP_REGION
+    crop = frame[int(y1 * h):int(y2 * h), int(x1 * w):int(x2 * w)]
+    if crop.size == 0:
         return None
     try:
-        boxes = ocr(*_AP_REGION, target_height=int((_AP_REGION[3] - _AP_REGION[1]) * task.height * 3))
+        result = _ap_ocr_engine().ocr(cv2.resize(crop, None, fx=3, fy=3))
     except Exception as e:
         task.log_info(f"读取 AP 失败：{e}")
         return None
-    digits = [b for b in boxes or [] if b.name.strip().isdigit() and len(b.name.strip()) <= 2]
-    if not digits:
-        return None
-    best = max(digits, key=lambda b: getattr(b, "confidence", 0))
-    return int(best.name.strip())
+    digits = [(text.strip(), score) for _, (text, score) in (result[0] or []) if text.strip().isdigit()
+              and len(text.strip()) <= 2] if result else []
+    if digits:
+        return int(max(digits, key=lambda item: item[1])[0])
+    return 1 if _ap_glyph_is_one(crop) else None
+
+
+def _ap_glyph_is_one(crop):
+    """OCR 常认不出细细的「1」：取白色字形（低饱和、高亮度），数字那块高约 0.045 画面、宽高比 1 约 0.33（3 约 0.76）。"""
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = ((hsv[..., 1] < 60) & (hsv[..., 2] > 215)).astype(np.uint8)
+    _, _, stats, _ = cv2.connectedComponentsWithStats(mask)
+    height = crop.shape[0]
+    glyphs = [s for s in stats[1:] if 0.45 * height <= s[3] <= 0.75 * height and s[4] > 0.05 * height * height]
+    if not glyphs:
+        return False
+    glyph = max(glyphs, key=lambda s: s[4])
+    return glyph[2] / glyph[3] < 0.45
+
+
+_ap_ocr = None
+
+
+def _ap_ocr_engine():
+    """AP 专用的 OCR（框架的区域 OCR 认不到这个发光数字；直接放大 3 倍丢给 onnxocr 才认得到）。第一次用才载入。"""
+    global _ap_ocr
+    if _ap_ocr is None:
+        from onnxocr.onnx_paddleocr import ONNXPaddleOcr
+        _ap_ocr = ONNXPaddleOcr(use_angle_cls=False, use_gpu=False)
+    return _ap_ocr
 
 
 _SEARCH_CARD_KEYWORDS = ("聚光灯",)  # 能检索琶音的卡（打出后跳「请选择…张…卡牌」检索页）
@@ -1058,7 +1089,7 @@ def handle_extra_card_use(task: TriggerTask):
     return False
 
 
-_SEARCH_TITLE = re.compile(r"请选择.*?(\d+)张.*?卡牌")
+_SEARCH_TITLE = re.compile(r"选择.*?(\d+)张.*?(卡牌|卡)")
 _SEARCH_CONFIRM_DELAY = 8  # 选完卡后这么久内同一页还在，就按「选择」确认（不再重选，避免把选好的卡点掉）
 
 
