@@ -103,11 +103,21 @@ class TestBigMapRoutePlan(unittest.TestCase):
         return [step.split("列", 1)[1] for step in plan["route"][1:]]
 
     def test_top_priority_type_is_favoured(self):
-        """第二層起照設定：精英排第一（泰妮多走精英），權重加倍後整層路線走兩個精英；照原本線性權重只走一個。"""
+        """第二層起照設定：精英排第一（泰妮多走精英），權重加倍後整層路線走兩個精英；照原本線性權重只走一個。
+        （拿掉困難徽章來比，困難另外扣分）"""
+        for node in self.map["nodes"]:
+            node["special_features"] = [item for item in node["special_features"]
+                                        if item["feature_name"] != "hard_in_map"]
         route = self.plan_on_floor(1, ["精英", "休息", "事件", "小怪"])
         self.assertEqual(route.count("精英"), 2)
         linear = utils.find_best_map_route_by_priority(self.map, ["精英", "休息", "事件", "小怪"])
         self.assertEqual(linear["type_counts"]["精英"], 1)
+
+    def test_hard_elite_avoided(self):
+        """困難精英（紫色火焰）容易打輸（23:12 第一層第 3 列就是死在這裡）：第 3 列唯一的精英是困難，有別條路就不走。"""
+        for floor in (0, 1):
+            route = self.plan_on_floor(floor, ["精英", "休息", "事件", "小怪"])
+            self.assertNotEqual(route[2], "精英")  # route[2] 是第 3 列
 
     def test_first_floor_prefers_rest(self):
         """第一層篝火優先：同樣設定精英第一，第一層的整層路線休息比精英多。"""

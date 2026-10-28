@@ -1274,6 +1274,13 @@ def _big_map_route_plan(task: TriggerTask, priority, visible_count):
     if floor == 0 and "休息" in priority:
         priority = ["休息"] + [node_type for node_type in priority if node_type != "休息"]
     weights = {node_type: 2 ** (len(priority) - 1 - index) for index, node_type in enumerate(priority)}
+    # 困难节点（紫色火焰徽章）很容易打输：第一层卡组还没成形，扣到几乎只在没别条路时才走；
+    # 之后扣掉最高分的一半（困难精英约等于休息，仍比事件、小怪好）
+    top = max(weights.values(), default=1)
+    hard_penalty = -top * 2 if floor == 0 else -top / 2
+    for node in nodes:
+        node["special_features"] = [dict(item, priority=hard_penalty) if item["feature_name"] == "hard_in_map"
+                                    else item for item in node["special_features"]]
     plan = find_best_map_route_by_priority({"nodes": nodes, "adjacency": map_info["adjacency"]}, priority,
                                            weights=weights, shop_bonus=0)
     if not plan or len(plan["route"]) < 2:
