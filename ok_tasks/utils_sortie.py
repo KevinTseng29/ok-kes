@@ -495,8 +495,10 @@ def handle_battle_page(task: TriggerTask):
                     if task._last_attempted_card == matched["name"]:
                         task._play_stuck_count += 1
                         task.log_info(f"卡牌「{matched['name']}」连续{task._play_stuck_count + 1}次尝试未出掉")
-                        if task._play_stuck_count >= 3:
-                            task.log_info(f"卡牌「{matched['name']}」连续3次未出掉，执行兜底出牌")
+                        if task._play_stuck_count >= _PLAY_STUCK_LIMIT:
+                            task.log_info(
+                                f"卡牌「{matched['name']}」连续{_PLAY_STUCK_LIMIT + 1}次未出掉（多半是费用不够），执行兜底出牌"
+                            )
                             task._last_attempted_card = None
                             task._play_stuck_count = 0
                             _try_all_card_keys(task, hand_count)
@@ -546,6 +548,9 @@ def handle_battle_page(task: TriggerTask):
 
 
 _UNREADABLE_HAND_FRAMES = 2  # 手牌数不是 0 却连续几次认不出手牌，就按 Enter 确认停在选目标状态的卡牌
+# 优先级卡牌按了还留在手牌里（多半是费用不够）：再试几次没出掉就改成兜底出牌。
+# 原本是同一张连试 4 次，每次约 3.5 秒、画面又不变，常被当成卡住
+_PLAY_STUCK_LIMIT = 1
 
 
 _GET_CARD_MAX_MISSES = 5  # 获得卡牌页连续几次认不出卡牌就点跳过

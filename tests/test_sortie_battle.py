@@ -48,5 +48,23 @@ class TestUnreadableHand(unittest.TestCase):
         self.assertEqual(self.run_frames(0, 3), ["e", "e", "e"])
 
 
+class TestUnplayablePriorityCard(unittest.TestCase):
+    """優先級卡牌按了還留在手牌（費用不夠）：第二次還沒出掉就改兜底出牌，不再同一張連試四次。"""
+
+    def test_falls_back_after_one_retry(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["节奏"]}
+        hand = [{"name": "节奏", "key": "1"}, {"name": "守护", "key": "2"}]
+        with patch.object(utils_sortie, "_read_hand_count", return_value=2), \
+                patch.object(utils_sortie, "mark_battle"), \
+                patch.object(utils_sortie, "_hand_card_names", return_value=["节奏", "守护"]), \
+                patch.object(utils_sortie, "_hand_cards", return_value=hand), \
+                patch.object(utils_sortie, "_try_all_card_keys") as fallback:
+            for _ in range(3):
+                utils_sortie.handle_battle_page(t)
+        self.assertEqual(t.keys, ["1", "enter", "1", "enter"])  # 試兩次
+        fallback.assert_called_once_with(t, 2)  # 第三輪改兜底
+
+
 if __name__ == "__main__":
     unittest.main()
