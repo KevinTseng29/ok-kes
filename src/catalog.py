@@ -108,10 +108,11 @@ class Catalog:
                     sources = entry.setdefault('sources', {})
                     sources[source] = sources.get(source, 0) + 1
             entry['last'] = now
-            # 裝備以名稱去重，描述與品質以最新看到的為準
+            # 裝備以名稱去重，描述與品質以最新看到的為準；
+            # 少了品質的資訊（選擇裝備界面讀不到品質）不蓋掉已有品質的資訊
             if text:
                 entry['text'] = text
-            if info:
+            if info and not (entry.get('info') or '').startswith(info):
                 entry['info'] = info
             needs_image = image is not None and not entry.get('image')
             self.dirty = True

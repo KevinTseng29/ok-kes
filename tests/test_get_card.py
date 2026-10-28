@@ -91,5 +91,35 @@ class TestGetCardFallback(unittest.TestCase):
         self.click.assert_not_called()
 
 
+class TestChooseEquipmentQuality(unittest.TestCase):
+    """選擇裝備界面（兩件候選）在安裝界面的品質取樣點上是背景色，不能讀成傳說記進目錄。"""
+
+    def task(self):
+        import numpy as np
+        texts = [box("调节：拷问工具箱", 0.5, 0.25, w=0.2), box("攻击力", 0.45, 0.30), box("说明", 0.5, 0.4, w=0.2)]
+        task = Task(texts, {})
+        task.config = {"游戏语言": "简体中文"}
+        task.frame = np.full((H, W, 3), 35, np.uint8)  # 背景：接近黑色
+        return task
+
+    def info(self, **kwargs):
+        task = self.task()
+        with patch.object(utils, "_record_catalog") as record:
+            item = utils._equipment_info(task, (0.4, 0.22, 0.7, 0.28), (0.4, 0.28, 0.56, 0.32), (0.38, 0.32, 0.72, 0.5),
+                                         **kwargs)
+        return item, record.call_args.args
+
+    def test_choose_page_reads_no_quality(self):
+        item, (_, kind, name, text, info, regions) = self.info(quality_point=None)
+        self.assertIsNone(item["quality"])
+        self.assertEqual(info, "1号位 攻击力")
+        self.assertEqual(len(regions), 3)  # 不截裝備圖示
+
+    def test_install_page_keeps_sampling(self):
+        item, (_, kind, name, text, info, regions) = self.info()
+        self.assertEqual(item["quality"], "传说")  # 安裝界面照舊取樣（這裡是假畫面）
+        self.assertEqual(len(regions), 4)
+
+
 if __name__ == "__main__":
     unittest.main()

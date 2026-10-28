@@ -83,6 +83,10 @@ class TestRecord(CatalogTestCase):
         self.cat.record('equipment', '蚀化臂铠', '攻击力+12', '繁体中文', '1号位 武器 传说')
         (_, entry), = self.cat.entries('equipment', '繁体中文')
         self.assertEqual((entry['text'], entry['info'], entry['seen']), ('攻击力+12', '1号位 武器 传说', 2))
+        # 選擇裝備界面讀不到品質：較少的資訊不蓋掉已有品質的資訊
+        self.cat.record('equipment', '蚀化臂铠', '攻击力+12', '繁体中文', '1号位 武器')
+        (_, entry), = self.cat.entries('equipment', '繁体中文')
+        self.assertEqual(entry['info'], '1号位 武器 传说')
 
     def test_entries_sorted_by_seen(self):
         self.cat.record('event', '', '较少出现', '繁体中文')

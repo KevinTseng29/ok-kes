@@ -2734,8 +2734,10 @@ def _should_install_equipment(task, current_name, current_quality, new_equipment
     )
 
 
-def _equipment_info(task: TriggerTask, name_region, type_region, description_region):
-    """从指定区域读取装备名称、类型和描述，并解析槽位、品质与配置优先级。"""
+def _equipment_info(task: TriggerTask, name_region, type_region, description_region, quality_point=(0.117, 0.409)):
+    """从指定区域读取装备名称、类型和描述，并解析槽位、品质与配置优先级。
+    quality_point 是安装装备界面左侧图标的品质取样点；选择装备界面（两件候选）同一点是背景，
+    读出来会被当成传说，所以传 None 不读品质、也不截图标。"""
     ocr_name = _get_region_text(task, name_region).strip()
     type_text = _get_region_text(task, type_region).strip()
     description = _get_region_text(task, description_region).strip()
@@ -2746,13 +2748,17 @@ def _equipment_info(task: TriggerTask, name_region, type_region, description_reg
         return None
     priority = _equipment_priority(task, slot)
     canonical_name, rank = _match_equipment_name(ocr_name, priority)
-    quality, quality_rgb = _equipment_quality_at(task, (0.117, 0.409))
-    task.log_info(f"待选装备颜色RGB={quality_rgb}，识别品质={quality or '未知'}")
-    # 对照图：名称、类型、描述三块加上左侧的装备图标（取品质颜色的位置附近）
+    quality = None
+    regions = (name_region, type_region, description_region)
+    if quality_point:
+        quality, quality_rgb = _equipment_quality_at(task, quality_point)
+        task.log_info(f"待选装备颜色RGB={quality_rgb}，识别品质={quality or '未知'}")
+        regions += ((0.07, 0.36, 0.17, 0.46),)  # 左侧的装备图标（取品质颜色的位置附近）
+    # 对照图：名称、类型、描述三块（安装界面再加上装备图标）
     _record_catalog(
         task, "equipment", ocr_name, description,
         f"{slot + 1}号位 {type_text}" + (f" {quality}" if quality else ""),
-        (name_region, type_region, description_region, (0.07, 0.36, 0.17, 0.46)),
+        regions,
     )
     return {
         "ocr_name": ocr_name,
@@ -3135,7 +3141,7 @@ def handle_equipment(task: TriggerTask):
     ]
     for name_region, type_region, description_region, click_position in candidate_specs:
         candidate = _equipment_info(
-            task, name_region, type_region, description_region
+            task, name_region, type_region, description_region, quality_point=None
         )
         if not candidate:
             task.log_info("选择装备界面的候选装备信息不完整，等待下轮重新识别")
