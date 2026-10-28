@@ -181,6 +181,37 @@ def _hand_cards(task: TriggerTask):
     return cards
 
 
+def _play_next_fallback_key(task: TriggerTask, count, signature):
+    """兜底出牌一次只按一张：按一个键、Enter，交回下一帧看手牌有没有变（像人一样按一张看一张）。
+    手牌变了就从最右边重新数；同一手牌每个键都按过还是没变才回传 False（手上的牌都打不起，该结束回合）。
+    原本一口气把每个键都按一遍再按 E，两次卡死前都是这样连按（2026-10-29 00:00、00:40）。"""
+    state = getattr(task, "_fallback_keys", None)
+    if not state or state["signature"] != signature:
+        state = task._fallback_keys = {"signature": signature, "next": min(count, 10)}
+    index = state["next"]
+    if index < 1:
+        task._fallback_keys = None
+        return False
+    state["next"] = index - 1
+    key = "0" if index == 10 else str(index)
+    task.log_info(f"兜底出牌：按键 {key}（手牌数={count}，剩 {index - 1} 张没试）")
+    task.send_key(key)
+    task.sleep(0.8)
+    task.send_key("enter")
+    task.sleep(1.5)
+    return True
+
+
+def _end_turn(task: TriggerTask, reason):
+    task._fallback_keys = None
+    task._last_attempted_card = None
+    task._play_stuck_count = 0
+    task.log_info(f"{reason}，按E结束回合")
+    task.send_key("e")
+    task.sleep(1.5)
+    return True
+
+
 def _try_all_card_keys(task: TriggerTask, count):
     """从当前手牌数向下尝试所有手牌按键，兜底处理按键漏识别或识别错误。
     手牌数为10时先发送0（对应第10张牌），再从9发送到1。"""
@@ -497,6 +528,12 @@ def handle_battle_page(task: TriggerTask):
 
     card_names = _hand_card_names(task)
     cards = _hand_cards(task)
+    observed = (hand_count, tuple(sorted(c["name"] for c in cards)),
+                tuple(sorted(getattr(b, "name", str(b)) for b in card_names)))
+    if getattr(task, "_battle_last_observed", None) != observed:
+        # 抽牌、出牌动画还在播时不动作，等下一帧手牌一样再出牌（连续塞按键可能让游戏卡死）
+        task._battle_last_observed = observed
+        return True
 
     if (cards or card_names):
         task._unreadable_hand_frames = 0
@@ -505,15 +542,8 @@ def handle_battle_page(task: TriggerTask):
         # _hand_card_names 回传的是 OCR 文字框（Box），取名称比较；Box 本身不能排序
         hand_signature = (hand_count, tuple(sorted(c["name"] for c in cards)),
                           tuple(sorted(getattr(b, "name", str(b)) for b in card_names)))
-        if getattr(task, "_fallback_hand_signature", None) == hand_signature:
-            task._fallback_hand_signature = None
-            task._last_attempted_card = None
-            task._play_stuck_count = 0
-            task.log_info("兜底出牌后手牌没变（手上的牌都打不起），按E结束回合")
-            task.send_key("e")
-            task.sleep(1)
-            return True
-        task._fallback_hand_signature = None
+        if getattr(task, "_fallback_keys", None) and task._fallback_keys["signature"] != hand_signature:
+            task._fallback_keys = None  # 手牌变了（有牌打出去）：兜底从头数
         # 出牌卡手检测：追踪上一次尝试打出的卡牌是否连续多轮仍留在手牌中
         if not hasattr(task, '_play_stuck_count'):
             task._play_stuck_count = 0
@@ -538,8 +568,8 @@ def handle_battle_page(task: TriggerTask):
                             )
                             task._last_attempted_card = None
                             task._play_stuck_count = 0
-                            _try_all_card_keys(task, hand_count)
-                            task._fallback_hand_signature = hand_signature
+                            if not _play_next_fallback_key(task, hand_count, hand_signature):
+                                return _end_turn(task, "兜底每张都按过、手牌没变（手上的牌都打不起）")
                             return True
                     else:
                         task._last_attempted_card = matched["name"]
@@ -562,9 +592,10 @@ def handle_battle_page(task: TriggerTask):
         task._last_attempted_card = None
         task._play_stuck_count = 0
         # 兜底从大到小出牌
-        task.log_info(f"未命中出牌优先级，按当前手牌数{hand_count}从大到小兜底出牌")
-        _try_all_card_keys(task, hand_count)
-        task._fallback_hand_signature = hand_signature
+        if getattr(task, "_fallback_keys", None) is None:
+            task.log_info(f"未命中出牌优先级，按当前手牌数{hand_count}从大到小兜底出牌（一次一张）")
+        if not _play_next_fallback_key(task, hand_count, hand_signature):
+            return _end_turn(task, "兜底每张都按过、手牌没变（手上的牌都打不起）")
         return True
     else:
         # 手牌数不是 0 却一张都认不出：不能直接按 E（使用者看到手上还有 0 费琶音就被结束回合）。
@@ -581,10 +612,8 @@ def handle_battle_page(task: TriggerTask):
                 task.send_key("enter")
                 task.sleep(2)
                 return True
-            if frames == _UNREADABLE_HAND_FRAMES + 1:
-                task.log_info(f"手牌数为{hand_count}还是认不出手牌，照手牌数兜底把每张都按一遍")
-                _try_all_card_keys(task, hand_count)
-                return True
+            if _play_next_fallback_key(task, hand_count, ("认不出手牌", hand_count)):
+                return True  # 认不出手牌：一帧按一张，每张都试过才按 E
             task._unreadable_hand_frames = 0
         finishturn_box = task.box_of_screen(0.844, 0.782, 0.998, 0.990)
         if task.find_feature(feature_name="finishturn", box=finishturn_box):

@@ -27,47 +27,52 @@ def battle_task():
     return t
 
 
-class TestUnreadableHand(unittest.TestCase):
-    """手牌數不是 0 卻一張都認不出：先等一幀 → Enter（卡牌停在選目標狀態）→ 兜底全按 → 才按 E。
-    原本第一幀就按 E，使用者看到手上還有 0 費琶音就被結束回合（23:16、23:20 開戰第一幀）。"""
+def run_battle(t, frames, hands, hand_count=None):
+    """跑幾幀戰鬥頁；hands 是每一幀的手牌（list of dict），最後一個重複使用。"""
+    hands = list(hands)
+    for i in range(frames):
+        hand = hands[min(i, len(hands) - 1)]
+        count = len(hand) if hand_count is None else hand_count
+        with patch.object(utils_sortie, "_read_hand_count", return_value=count),                 patch.object(utils_sortie, "mark_battle"),                 patch.object(utils_sortie, "_hand_card_names", return_value=[SimpleNamespace(name=c["name"]) for c in hand]),                 patch.object(utils_sortie, "_hand_cards", return_value=hand):
+            utils_sortie.handle_battle_page(t)
+    return t.keys
 
-    def run_frames(self, hand_count, frames, cards=()):
+
+class TestWaitForStableHand(unittest.TestCase):
+    """手牌（數量、名稱）要連續兩幀一樣才動作：抽牌、出牌動畫還在播時不塞按鍵（兩次卡死前都是連按）。"""
+
+    def test_first_frame_only_observes(self):
         t = battle_task()
-        with patch.object(utils_sortie, "_read_hand_count", return_value=hand_count), \
-                patch.object(utils_sortie, "mark_battle"), \
-                patch.object(utils_sortie, "_hand_card_names", return_value=[]), \
-                patch.object(utils_sortie, "_hand_cards", return_value=list(cards)), \
-                patch.object(utils_sortie, "_try_all_card_keys", side_effect=lambda task, count: t.keys.append("all")):
-            for _ in range(frames):
-                utils_sortie.handle_battle_page(t)
-        return t.keys
+        t.config = {"出牌优先级": ["节奏"]}
+        hand = [{"name": "节奏", "key": "1"}]
+        self.assertEqual(run_battle(t, 1, [hand]), [])
+        self.assertEqual(run_battle(t, 1, [hand]), ["1", "enter"])
 
-    def test_unreadable_hand_escalates_before_ending_turn(self):
-        self.assertEqual(self.run_frames(6, 1), [])  # 第一幀先等
-        self.assertEqual(self.run_frames(6, 4), ["enter", "all", "e"])
-        self.assertEqual(self.run_frames(6, 8), ["enter", "all", "e", "enter", "all", "e"])
+
+class TestUnreadableHand(unittest.TestCase):
+    """手牌數不是 0 卻一張都認不出：等 → Enter（卡牌停在選目標狀態）→ 一幀按一張 → 都試過才按 E。"""
+
+    def test_escalates_one_key_per_frame(self):
+        t = battle_task()
+        keys = run_battle(t, 12, [[]], hand_count=2)
+        self.assertEqual(keys[:5], ["enter", "2", "enter", "1", "enter"])
+        self.assertIn("e", keys)
+        self.assertLess(keys.index("e"), len(keys))
 
     def test_empty_hand_just_ends_turn(self):
-        self.assertEqual(self.run_frames(0, 3), ["e", "e", "e"])
+        t = battle_task()
+        self.assertEqual(run_battle(t, 4, [[]], hand_count=0), ["e", "e", "e"])
 
 
 class TestUnplayablePriorityCard(unittest.TestCase):
-    """優先級卡牌按了還留在手牌（費用不夠）：第二次還沒出掉就改兜底出牌，不再同一張連試四次。"""
+    """優先級卡牌按了還留在手牌（費用不夠）：第二次還沒出掉就改兜底，一次只按一張。"""
 
     def test_falls_back_after_one_retry(self):
         t = battle_task()
         t.config = {"出牌优先级": ["节奏"]}
         hand = [{"name": "节奏", "key": "1"}, {"name": "守护", "key": "2"}]
-        with patch.object(utils_sortie, "_read_hand_count", return_value=2), \
-                patch.object(utils_sortie, "mark_battle"), \
-                patch.object(utils_sortie, "_hand_card_names",
-                             return_value=[SimpleNamespace(name="节奏"), SimpleNamespace(name="守护")]), \
-                patch.object(utils_sortie, "_hand_cards", return_value=hand), \
-                patch.object(utils_sortie, "_try_all_card_keys") as fallback:
-            for _ in range(2):
-                utils_sortie.handle_battle_page(t)
-        self.assertEqual(t.keys, ["1", "enter"])  # 第一次照優先級出牌
-        fallback.assert_called_once_with(t, 2)  # 第二次還在手上就改兜底
+        keys = run_battle(t, 3, [hand])
+        self.assertEqual(keys, ["1", "enter", "2", "enter"])  # 先照優先級，還在手上就兜底按一張
 
 
 class TestArpeggioOrder(unittest.TestCase):
@@ -78,46 +83,24 @@ class TestArpeggioOrder(unittest.TestCase):
         t.config = {"出牌优先级": ["琶音", "节奏"]}
         hand = [{"name": "节奏：琶音（3)", "key": "1"}, {"name": "琶音（0)", "key": "2"},
                 {"name": "节奏：琶音(2)", "key": "3"}, {"name": "节奏", "key": "4"}]
-        with patch.object(utils_sortie, "_read_hand_count", return_value=4),                 patch.object(utils_sortie, "mark_battle"),                 patch.object(utils_sortie, "_hand_card_names", return_value=[SimpleNamespace(name=c["name"]) for c in hand]),                 patch.object(utils_sortie, "_hand_cards", return_value=hand):
-            utils_sortie.handle_battle_page(t)
-        self.assertEqual(t.keys, ["2", "enter"])
+        self.assertEqual(run_battle(t, 2, [hand]), ["2", "enter"])
 
 
 class TestEndTurnWhenNothingPlayable(unittest.TestCase):
-    """兜底出牌每張都按過、手牌卻沒變（AP 不夠）：自己按 E 結束回合，不再一直循環跳 AP 不足。"""
-
-    def run_frames(self, hands, priority=("节奏",)):
-        t = battle_task()
-        t.config = {"出牌优先级": list(priority)}
-        frames = iter(hands)
-        current = {}
-
-        def next_hand():
-            current["hand"] = next(frames)
-
-        with patch.object(utils_sortie, "_read_hand_count", side_effect=lambda task: len(current["hand"])), \
-                patch.object(utils_sortie, "mark_battle"), \
-                patch.object(utils_sortie, "_hand_card_names",
-                             side_effect=lambda task: [SimpleNamespace(name=c["name"]) for c in current["hand"]]), \
-                patch.object(utils_sortie, "_hand_cards", side_effect=lambda task: list(current["hand"])), \
-                patch.object(utils_sortie, "_try_all_card_keys") as fallback:
-            for _ in hands:
-                next_hand()
-                utils_sortie.handle_battle_page(t)
-        return t.keys, fallback
+    """兜底每張都按過、手牌卻沒變（AP 不夠）：自己按 E；手牌變了就照常繼續出牌。"""
 
     def test_unplayable_hand_ends_turn(self):
-        hand = [{"name": "节奏", "key": "1"}, {"name": "聚光灯", "key": "2"}]
-        keys, fallback = self.run_frames([hand] * 3)
-        fallback.assert_called_once()
-        self.assertEqual(keys, ["1", "enter", "e"])  # 出牌 → 沒出掉改兜底 → 手牌沒變就結束回合
+        t = battle_task()
+        hand = [{"name": "守护", "key": "1"}, {"name": "防御", "key": "2"}]
+        keys = run_battle(t, 4, [hand], hand_count=2)
+        self.assertEqual(keys, ["2", "enter", "1", "enter", "e"])
 
     def test_hand_changed_keeps_playing(self):
-        hand = [{"name": "节奏", "key": "1"}, {"name": "聚光灯", "key": "2"}]
-        after = [{"name": "聚光灯", "key": "1"}]  # 兜底打出了一張
-        keys, fallback = self.run_frames([hand, hand, after], priority=("节奏", "聚光灯"))
-        self.assertNotIn("e", keys)
-        self.assertEqual(keys, ["1", "enter", "1", "enter"])  # 照常打下一張
+        t = battle_task()
+        first = [{"name": "守护", "key": "1"}, {"name": "防御", "key": "2"}]
+        second = [{"name": "守护", "key": "1"}]
+        keys = run_battle(t, 4, [first, first, second, second])
+        self.assertEqual(keys, ["2", "enter", "1", "enter"])  # 打出一張後從頭數，沒有按 E
 
 
 if __name__ == "__main__":

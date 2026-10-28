@@ -2029,6 +2029,10 @@ def handle_stuck_log(task: TriggerTask):
     from utils_sortie import handle_secret_enemy
     handle_secret_enemy(task)
     random_clicks = getattr(task, '_stuck_random_clicks', 0)
+    hand_count_box = find_box_at_point(task, 0.513, 0.975)
+    if hand_count_box and re.search(r"\d+/10", hand_count_box.name):
+        task.log_info(f"画面卡住已持续{stuck_seconds}秒，在战斗中，不随机点击")
+        return False
     if random_clicks >= _STUCK_RANDOM_CLICK_LIMIT:
         task.log_info(f"画面卡住已持续{stuck_seconds}秒，随机点击已试{random_clicks}次，不再乱点")
         return False
