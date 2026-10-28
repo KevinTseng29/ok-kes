@@ -1,5 +1,6 @@
 from ok import TriggerTask
 
+import json
 import re
 import random
 import time
@@ -1624,6 +1625,7 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
                 task.log_info(
                     f"{page}: 命中优先级「{target}」，点击目标卡牌「{card['name']}」"
                 )
+                _journal(task, f"{action or '选'}卡牌", card["name"])
                 _move_and_click(task, card["x"], card["y"])
                 task.sleep(0.3)
                 card["selected"] = True
@@ -2250,6 +2252,7 @@ def handle_settlement(task: TriggerTask):
             task.node_status['pass_final_boss_count'] += 1
             passed = task.node_status['pass_final_boss_count']
             task.log_info(f"检测到boss结算页面且 reach_final_boss=True，通关层数+1 (当前: {passed})")
+            _journal(task, "通关", f"第{passed}层")
             reset_layer_status(task)
         task.sleep(1)
         return True
@@ -2280,6 +2283,31 @@ def handle_skip(task: TriggerTask):
     return False
 
 
+RUN_HISTORY_FILE = os.path.join("logs", "run_history.jsonl")
+
+
+def _journal(task: TriggerTask, kind, detail):
+    """每局历程（logs/run_history.jsonl，一行一笔，排查用）：冥想、灵光一闪、神闪、命运、复制、移除、事件、首领、
+    获得卡牌、通关、结果。同一局的笔数共用 run（第一笔的时间）；同一笔 5 秒内重复（页面又处理一次）只记一次。出错不影响流程。"""
+    try:
+        now = time.time()
+        last = getattr(task, "_journal_last", None)
+        if last and last[0] == (kind, detail) and now - last[1] < 5:
+            return
+        task._journal_last = ((kind, detail), now)
+        status = getattr(task, "node_status", None) or {}
+        run = task.__dict__.get("_run_id") or time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
+        task._run_id = run
+        entry = {"run": run, "time": time.strftime("%H:%M:%S", time.localtime(now)), "mode": type(task).__name__,
+                 "floor": status.get("pass_final_boss_count", 0) + 1, "node": status.get("node_count", 0),
+                 "kind": kind, "detail": detail}
+        os.makedirs(os.path.dirname(RUN_HISTORY_FILE), exist_ok=True)
+        with open(RUN_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        task.log_info(f"记录历程失败：{e}")
+
+
 def _note_fate(task: TriggerTask, name):
     """记下这局在第几层选了哪个命运，探险结果时连同胜负存进战绩（统计各命运的胜率）。
     同一层 10 秒内又选（确认前页面又处理了一次）就当成改选，取代上一笔。"""
@@ -2289,6 +2317,7 @@ def _note_fate(task: TriggerTask, name):
     if fates and fates[-1]["floor"] == floor and now - fates[-1]["time"] < 10:
         fates.pop()
     fates.append({"floor": floor, "name": name.strip(), "time": now})
+    _journal(task, "命运", name.strip())
 
 
 def handle_destiny_choice(task: TriggerTask):
@@ -3446,6 +3475,7 @@ def handle_select_card(task: TriggerTask):
         )
         if skip_box:
             task.log_info(f"卡牌{action}选择无可用卡牌，点击「跳过」")
+            _journal(task, f"{action}卡牌", "跳过（清单里的卡都没认到）")
             task.click_box(skip_box)
             return True
     return result
@@ -4008,6 +4038,7 @@ def handle_event_task(task: TriggerTask):
             if is_subsequence(keyword, t['description']):
                 chosen = t
                 task.log_info(f"优先选择「{keyword}」-> 描述: {t['description']}")
+                _journal(task, "事件", f"「{keyword}」{t['description'][:60]}")
                 break
         if chosen is not None:
             break
@@ -5105,6 +5136,7 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         names = [card["name"] for card in cards]
         if _find_flash_skip_box(task) is not None:
             task.log_info(f"首层刷特定闪光：三选一{names}没有「{flash_priority[0]}」，跳过，留到下一个篝火")
+            _journal(task, "灵光一闪效果", f"跳过（{target_card} 三选一没有「{flash_priority[0]}」）")
             _click_flash_skip(task)
             return True
         task.log_info(f"首层刷特定闪光：三选一{names}没有「{flash_priority[0]}」也不能跳过，随便选一个")
@@ -5119,6 +5151,7 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         task.log_info(f"随机选择「{chosen_card['name']}」")
 
     task._preset_reflash_until = 0
+    _journal(task, "灵光一闪效果", f"{chosen_card['name']}｜{chosen_card.get('description', '')[:60]}")
     _move_and_click(task, chosen_card['x'], chosen_card['y'])
     _confirm_divine_flash(task)
     return True
@@ -5165,6 +5198,7 @@ def _confirm_divine_flash(task: TriggerTask):
     )
     if confirm is not None:
         task.log_info("神之灵光一闪确认框：模糊的记忆会增加，点击确认")
+        _journal(task, "神闪", "选了神之灵光一闪（模糊的记忆增加）")
         task.click_box(confirm)
         task.sleep(1)
 
@@ -5216,6 +5250,7 @@ def _record_round(task: TriggerTask, succeeded):
         fates = [{"floor": f["floor"], "name": f["name"]} for f in getattr(task, "_run_fates", [])]
         run_stats.record(succeeded, type(task).__name__, fates=fates,
                          floors=status.get("pass_final_boss_count", 0))
+        _journal(task, "结果", "成功" if succeeded else "失败")
     except Exception as e:
         task.log_info(f"记录战绩失败：{e}")
 
@@ -5354,6 +5389,7 @@ def reset_mission_status(task: TriggerTask):
         task.node_status['save_target_member'] = keep['save_target_member']
     task.member_status = _initial_member_status()
     task._run_fates = []  # 这一局选的命运（_note_fate），已随战绩存档
+    task._run_id = None  # 下一局的历程（_journal）另起一个 run
     _clear_run_state(task)  # 这一局结束，存档的主练装备不再适用
     task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)

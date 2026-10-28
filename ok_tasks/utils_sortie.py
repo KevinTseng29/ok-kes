@@ -1,7 +1,7 @@
 from ok import TriggerTask
 
 from utils import (
-    _move_and_click, _simplify_texts, _edit_distance, _get_config_value, _get_card_list, _get_route_priority, _get_game_text,
+    _move_and_click, _journal, _simplify_texts, _edit_distance, _get_config_value, _get_card_list, _get_route_priority, _get_game_text,
     find_box_at_point, find_text, recognize_cards,
     _card_has_type_below, select_card, calculate_dominant_hue,
     log_credit, log_node_status, handle_battle_crash, handle_close_page, handle_refine_equipment_credit,
@@ -417,6 +417,7 @@ def handle_boss_selection(task: TriggerTask):
         task.log_info(f"首领选择: 避开「{'、'.join(_AVOID_BOSS_KEYWORDS)}」，选择「{boss['name']}」")
     else:
         task.log_info(f"首领选择: 随机选择「{boss['name']}」")
+    _journal(task, "首领", f"{boss['family']} {boss['name']}".strip())
     _move_and_click(task, boss["x"], boss["y"])
     task.sleep(1)
     # _move_and_click(task, 0.919, 0.930)
@@ -633,6 +634,7 @@ def handle_get_card(task: TriggerTask):
         chosen = next((card for card in cards if name in card["name"]), None)
         if chosen:
             task.log_info(f"获得卡牌: 优先选择「{chosen['name']}」(匹配优先级「{name}」)")
+            _journal(task, "获得卡牌", chosen["name"])
             _move_and_click(task, chosen["x"], chosen["y"])
             task.sleep(0.5)
             _move_and_click(task, 0.912, 0.931)
