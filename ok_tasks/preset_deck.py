@@ -19,6 +19,7 @@ from ok import TriggerTask
 from utils import (
     _edit_distance,
     _get_config_value,
+    _is_chaos_mode_task,
     _get_game_text,
     _get_region_text,
     _move_and_click,
@@ -30,8 +31,11 @@ from utils import (
     find_text,
     handle_view_original,
     is_subsequence,
+    read_combatant_equipment,
+    read_combatant_removed_count,
     recognize_cards,
     recognize_cards_in_deck,
+    reconcile_equipment,
 )
 
 # 参考截图（灵光一闪界面.png）的游戏画面宽度，用于把模板缩放到当前分辨率。
@@ -937,26 +941,32 @@ def _is_combatant_page(task):
     return any(word in title for word in ("战斗员", "伙伴", "命运"))
 
 
+def _enter_combatant_page(task):
+    """从局内页面（休息、商店、路线选择……）进战斗员界面。"""
+    task.all_texts = _simplify_texts(task.ocr())
+    if _is_combatant_page(task):
+        return True
+    _move_and_click(task, *_COMBATANT_PARTY_POINT)
+    for _ in range(10):
+        task.sleep(0.4)
+        task.all_texts = _simplify_texts(task.ocr())
+        if _is_combatant_page(task):
+            return True
+    return False
+
+
 def _open_all_decks_from_any_page(task):
     """从休息/商店页进战斗员界面，再进所有牌堆。"""
     task.all_texts = _simplify_texts(task.ocr())
     if _is_deck_page(task):
         return True
+    if not _enter_combatant_page(task):
+        return _open_deck_page(task)
+    return _enter_deck_from_combatant(task)
 
-    on_combatant = _is_combatant_page(task)
-    if not on_combatant:
-        _move_and_click(task, *_COMBATANT_PARTY_POINT)
-        entered = False
-        for _ in range(10):
-            task.sleep(0.4)
-            task.all_texts = _simplify_texts(task.ocr())
-            if _is_combatant_page(task):
-                entered = True
-                break
-        if not entered:
-            return _open_deck_page(task)
-        on_combatant = True
 
+def _enter_deck_from_combatant(task):
+    """战斗员界面点左侧选单的牌堆图示进所有牌堆；进不去就关掉战斗员界面。"""
     _move_and_click(task, *_COMBATANT_DECK_POINT)
     for _ in range(15):
         task.sleep(0.4)
@@ -965,13 +975,12 @@ def _open_all_decks_from_any_page(task):
             task.log_info("预设卡组: 已从战斗员界面进入所有牌堆")
             return True
     task.log_warning("预设卡组: 战斗员界面点击牌堆图标后未进入所有牌堆")
-    if on_combatant or _is_combatant_page(task):
-        for _ in range(2):
-            _move_and_click(task, *_COMBATANT_CLOSE_POINT)
-            task.sleep(0.8)
-            task.all_texts = _simplify_texts(task.ocr())
-            if not _is_combatant_page(task):
-                break
+    for _ in range(2):
+        _move_and_click(task, *_COMBATANT_CLOSE_POINT)
+        task.sleep(0.8)
+        task.all_texts = _simplify_texts(task.ocr())
+        if not _is_combatant_page(task):
+            break
     return False
 
 
@@ -993,20 +1002,37 @@ def _close_all_decks_page(task):
 
 
 def inventory_after_restart(task):
-    """重启 ok-kes（或重新开启任务）后第一次到路线选择页：先读一次主练的牌组，冥想、复制、商店、
-    选卡都改用画面上的实际数量，不用重启前的记忆。只做一次；动过画面回传 True（这一轮先不选路线）。"""
+    """重启 ok-kes（或重新开启任务）后第一次到路线选择页：先到战斗员界面核对主练装备与移除次数，
+    实验模式再进所有牌堆读主练牌组；之后的装备、冥想、复制、商店、选卡都用画面上的实际状态，
+    不用重启前的记忆。只做一次；动过画面回传 True（这一轮先不选路线）。"""
     task._needs_inventory = False
-    if not getattr(task, "preset_deck_enabled", False):
+    if not _is_chaos_mode_task(task):
         return False
-    groups = build_groups(load_preset_records(task))
-    if not groups:
-        return False
-    task.log_info("重启后盘点：先读一次主练的牌组")
-    _invalidate_deck_cache(task)
-    if not _open_all_decks_from_any_page(task):
-        task.log_info("重启后盘点：打不开所有牌堆，之后遇到选卡时再读")
-        _close_combatant_page(task)
+    task.log_info("重启后盘点：核对主练装备与牌组")
+    if not _enter_combatant_page(task):
+        task.log_info("重启后盘点：打不开战斗员界面，之后照记录与画面判断")
         return True
+    task.sleep(0.8)  # 等面板淡入，淡入中的颜色会读错
+    task.all_texts = _simplify_texts(task.ocr())
+    live = read_combatant_equipment(task)
+    if live is not None:
+        reconcile_equipment(task, live)
+    read_combatant_removed_count(task)
+
+    groups = build_groups(load_preset_records(task)) if getattr(task, "preset_deck_enabled", False) else []
+    if groups:
+        _invalidate_deck_cache(task)
+        if _enter_deck_from_combatant(task):
+            _read_deck_counts(task, groups)
+            counts = getattr(task, "_preset_name_counts", None) or {}
+            task.log_info(
+                "重启后盘点：主练牌组 "
+                + "、".join(f"{name} {count}张" for name, count in counts.items())
+            )
+        else:
+            task.log_info("重启后盘点：打不开所有牌堆，之后遇到选卡时再读")
+    _close_combatant_page(task)
+    return True
     _read_deck_counts(task, groups)
     _close_combatant_page(task)
     counts = getattr(task, "_preset_name_counts", None) or {}

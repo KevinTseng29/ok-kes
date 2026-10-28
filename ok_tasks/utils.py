@@ -2402,7 +2402,10 @@ _EQUIPMENT_QUALITY_RANKS = {"": 0, "普通": 1, "史诗": 2, "传说": 3}
 _EQUIPMENT_NORMAL_RGB = (61, 76, 138)
 _EQUIPMENT_EPIC_RGB = (160, 88, 69)
 _EQUIPMENT_EMPTY_RGB = (15, 15, 15)
+_EQUIPMENT_LEGENDARY_RGB = (135, 82, 164)
 _EQUIPMENT_RGB_TOLERANCE = 30
+# 战斗员界面主练面板的三格装备图示：取右上角（避开左上角的部位小图示和中间的图案）
+_COMBATANT_EQUIPMENT_POINTS = ((0.207, 0.856), (0.288, 0.856), (0.370, 0.856))
 
 
 def _equipment_slot(task: TriggerTask, type_text):
@@ -2596,6 +2599,76 @@ def _equipment_quality_at(task: TriggerTask, point, allow_empty=False):
     if _rgb_is_close(rgb, _EQUIPMENT_EPIC_RGB):
         return "史诗", rgb
     return "传说", rgb
+
+
+def _strict_equipment_quality(task: TriggerTask, point):
+    """只认明确的品质颜色（含空栏）；画面淡入中或看不清回传 None，不像 _equipment_quality_at 当成传说。"""
+    rgb = _pixel_rgb(task, point)
+    for quality, target in (("", _EQUIPMENT_EMPTY_RGB), ("普通", _EQUIPMENT_NORMAL_RGB),
+                            ("史诗", _EQUIPMENT_EPIC_RGB), ("传说", _EQUIPMENT_LEGENDARY_RGB)):
+        if _rgb_is_close(rgb, target):
+            return quality
+    return None
+
+
+def read_combatant_equipment(task: TriggerTask):
+    """战斗员界面：面板是主练时读三格装备的品质（连读两次一致才采用；看不清的格子为 None）。
+    面板不是主练回传 None。"""
+    main = _get_config_value(task, "刷存档主战员", "")
+    name_text = _get_region_text(task, (0.14, 0.33, 0.34, 0.40))
+    if not main or main not in name_text:
+        task.log_info(f"重启后盘点：战斗员界面显示的是「{name_text}」，不是主练，跳过装备核对")
+        return None
+    previous = None
+    for _ in range(4):
+        qualities = [_strict_equipment_quality(task, point) for point in _COMBATANT_EQUIPMENT_POINTS]
+        if qualities == previous and None not in qualities:
+            return qualities
+        previous = qualities
+        task.sleep(0.4)
+    return previous
+
+
+def reconcile_equipment(task: TriggerTask, live_qualities):
+    """用画面上的装备品质修正主练装备记录：空了就清掉；品质和记录不同就把名称标成未知
+    （之后只比品质，见 _should_install_equipment）；相同就沿用记录的名称。"""
+    equipment = _equipment_state(task)
+    changes = []
+    for slot, live in enumerate(live_qualities or []):
+        if live is None:
+            continue
+        name, recorded = equipment["names"][slot], equipment["qualities"][slot]
+        if live == "":
+            if name or recorded:
+                changes.append(f"{slot + 1}号位实际为空（记录是「{name or recorded}」）")
+            equipment["names"][slot] = equipment["descriptions"][slot] = equipment["qualities"][slot] = ""
+        elif name and recorded and recorded != live:
+            changes.append(f"{slot + 1}号位品质是{live}，和记录的「{name}」（{recorded}）不符，名称改为未知")
+            equipment["names"][slot] = equipment["descriptions"][slot] = ""
+            equipment["qualities"][slot] = live
+        else:
+            equipment["qualities"][slot] = live
+    task.log_info(
+        "重启后盘点：主练装备 "
+        + "，".join(f"{slot + 1}号位：{equipment['names'][slot] or '未知'}（{equipment['qualities'][slot] or '空'}）"
+                   if equipment['qualities'][slot] else f"{slot + 1}号位：空" for slot in range(3))
+        + ("；" + "；".join(changes) if changes else "，与记录一致")
+    )
+
+
+def read_combatant_removed_count(task: TriggerTask):
+    """战斗员界面「移除 x/5」：修正本局已移除卡牌数（重启后计数会归零）。"""
+    row = [b for b in task.all_texts
+           if 0.14 <= (b.x + b.width / 2) / task.width <= 0.40 and 0.65 <= (b.y + b.height / 2) / task.height <= 0.70]
+    if not any("移除" in b.name for b in row):
+        return
+    counts = [m for m in (re.search(r"(\d+)\s*[/／]\s*(\d+)", b.name) for b in row) if m]
+    ns = getattr(task, "node_status", None)
+    if counts and isinstance(ns, dict):
+        removed = int(counts[0].group(1))
+        if ns.get("removed_card_count", 0) != removed:
+            task.log_info(f"重启后盘点：本局已移除卡牌 {ns.get('removed_card_count', 0)} → {removed}（以画面为准）")
+            ns["removed_card_count"] = removed
 
 
 def _member_equipment_qualities(task: TriggerTask, level_box):

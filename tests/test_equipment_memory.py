@@ -87,5 +87,81 @@ class TestRestoreRunState(unittest.TestCase):
         self.assertEqual(utils._equipment_state(after)["names"], ["", "", ""])
 
 
+class FakeFrameTask(SimpleNamespace):
+    """戰鬥員界面：frame 依序給出（淡入中 → 穩定），每次 sleep 換下一張。"""
+
+    def __init__(self, frames, texts=(), node_status=None, main="罗斯薇瑟"):
+        super().__init__(width=1280, height=720, frames=list(frames), all_texts=list(texts), logs=[],
+                         config={"刷存档主战员": main}, member_status=utils._initial_member_status(),
+                         node_status=node_status if node_status is not None else {"removed_card_count": 0})
+
+    @property
+    def frame(self):
+        return self.frames[0]
+
+    def sleep(self, seconds):
+        if len(self.frames) > 1:
+            self.frames.pop(0)
+
+    def log_info(self, message, notify=False):
+        self.logs.append(message)
+
+
+def frame(colors):
+    """三格裝備圖示右上角的顏色（RGB）畫在對應取樣點上。"""
+    import numpy as np
+    image = np.zeros((720, 1280, 3), np.uint8)
+    for (px, py), rgb in zip(utils._COMBATANT_EQUIPMENT_POINTS, colors):
+        x, y = round(px * 1280), round(py * 720)
+        image[y - 2:y + 3, x - 2:x + 3] = rgb[::-1]
+    return image
+
+
+def box(name, x1, y1, x2, y2):
+    return SimpleNamespace(name=name, x=x1 * 1280, y=y1 * 720, width=(x2 - x1) * 1280, height=(y2 - y1) * 720)
+
+
+LEGEND, EPIC, FADING = (136, 82, 164), (160, 88, 69), (97, 56, 46)
+NAME = box("罗斯薇瑟", 0.15, 0.35, 0.25, 0.38)
+
+
+class TestCombatantInventory(unittest.TestCase):
+    """重啟後在戰鬥員界面核對主練裝備：等淡入結束、不把看不清的顏色當成傳說。"""
+
+    def test_waits_for_fade_in(self):
+        task = FakeFrameTask([frame([FADING] * 3), frame([LEGEND, EPIC, EPIC]), frame([LEGEND, EPIC, EPIC])], [NAME])
+        self.assertEqual(utils.read_combatant_equipment(task), ["传说", "史诗", "史诗"])
+
+    def test_not_main_member_is_skipped(self):
+        task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])], [box("赛雷妮尔", 0.15, 0.35, 0.25, 0.38)])
+        self.assertIsNone(utils.read_combatant_equipment(task))
+
+    def test_reconcile_keeps_names_when_quality_matches(self):
+        task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])])
+        equipment = utils._equipment_state(task)
+        equipment["names"][:] = ["混沌指控", "踏云之鞋", "超负荷动力机关"]
+        equipment["qualities"][:] = ["传说", "史诗", "史诗"]
+        utils.reconcile_equipment(task, ["传说", "史诗", "史诗"])
+        self.assertEqual(equipment["names"], ["混沌指控", "踏云之鞋", "超负荷动力机关"])
+        self.assertIn("与记录一致", task.logs[-1])
+
+    def test_reconcile_marks_mismatch_unknown_and_clears_empty(self):
+        task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])])
+        equipment = utils._equipment_state(task)
+        equipment["names"][:] = ["混沌指控", "踏云之鞋", "超负荷动力机关"]
+        equipment["qualities"][:] = ["传说", "史诗", "史诗"]
+        utils.reconcile_equipment(task, ["史诗", "", None])  # 3 號位看不清：不動
+        self.assertEqual(equipment["names"], ["", "", "超负荷动力机关"])
+        self.assertEqual(equipment["qualities"], ["史诗", "", "史诗"])
+        # 名稱未知、品質史詩：之後只比品質，不會被優先級較低的史詩換掉
+        self.assertFalse(utils._should_install_equipment(None, "", "史诗", new_item("符文图样之锤", "史诗"))[0])
+
+    def test_removed_count_from_panel(self):
+        texts = [box("移除", 0.17, 0.66, 0.21, 0.69), box("3/5", 0.35, 0.66, 0.38, 0.69)]
+        task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])], texts)
+        utils.read_combatant_removed_count(task)
+        self.assertEqual(task.node_status["removed_card_count"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()
