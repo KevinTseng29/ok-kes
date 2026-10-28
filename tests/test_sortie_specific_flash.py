@@ -72,6 +72,25 @@ class TestSpecificFlash(unittest.TestCase):
             click.assert_called_once()
             self.assertNotIn("click_skip", t.logs)
 
+    def arpeggio_page(self, divine_index=None, skip=True):
+        cards = [{"name": "节奏：琶音", "description": f"效果{i}", "x": 0.25 * (i + 1), "y": 0.4,
+                  "_has_big_divine": i == divine_index} for i in range(3)]
+        return self.run_page(cards, texts=[skip_box()] if skip else [], obtained=True)
+
+    def test_arpeggio_only_takes_divine(self):
+        """刷到音樂開始後，琶音的閃光只收神閃：有神閃就選並記錄，沒有就跳過（琶音維持原樣）。"""
+        t, click = self.arpeggio_page(divine_index=2)
+        click.assert_called_once_with(t, 0.75, 0.4)
+        self.assertTrue(t.node_status["arpeggio_divine"])
+        t, click = self.arpeggio_page()
+        click.assert_not_called()
+        self.assertIn("click_skip", t.logs)
+        self.assertFalse(t.node_status.get("arpeggio_divine"))
+
+    def test_arpeggio_unskippable_falls_back(self):
+        t, click = self.arpeggio_page(skip=False)
+        click.assert_called_once()  # 不能跳過：照原本流程（閃光優先級）選
+
     def test_chaos_mode_keeps_random(self):
         """卡厄思模式的同名設定不受影響：沒命中照舊隨機選。"""
         t, click = self.run_page(PLAIN, texts=[skip_box()], experimental=False)

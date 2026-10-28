@@ -2316,7 +2316,7 @@ def _journal(task: TriggerTask, kind, detail):
 RUN_PROGRESS_FILE = os.path.join("logs", "run_progress.json")
 RUN_PROGRESS_MAX_AGE = 30 * 60  # 超过这么久没更新的存档当成别局的，不还原
 _RUN_PROGRESS_KEYS = ("pass_final_boss_count", "get_specific_flash", "node_count", "removed_card_count",
-                   "neutral_card_count")
+                      "neutral_card_count", "arpeggio_divine")
 
 
 def save_run_progress(task: TriggerTask):
@@ -3531,8 +3531,12 @@ def handle_select_card(task: TriggerTask):
 
     card_list = _get_card_list(task, config_key)
     if action in ("闪光", "灵光") and _specific_flash_enabled(task) and task.node_status.get("get_specific_flash"):
-        # 已刷到指定闪光：列表第一张（要刷的那张）不再闪，改闪其余的卡
+        # 已刷到指定闪光：列表第一张（要刷的那张）不再闪，改闪其余的卡；
+        # 都没有可闪的卡、琶音还没神闪时改闪琶音（三选一只收神闪，没有就跳过，琶音维持原样）
         card_list = card_list[1:]
+        keyword = next(iter(_get_card_list(task, "闪光优先级")), "")
+        if keyword and not task.node_status.get("arpeggio_divine") and keyword not in card_list:
+            card_list = card_list + [keyword]
     result = select_card(task, card_list, count=count, action=action)
     if not result and action in ("闪光", "灵光"):
         skip_box = next(
@@ -5118,6 +5122,32 @@ def _hunting_specific_flash(task: TriggerTask):
             and status.get("pass_final_boss_count", 0) == 0)
 
 
+def _divine_only_flash(task: TriggerTask, cards, flash_priority):
+    """刷到指定闪光后，名称含指定效果关键字的卡（例如琶音）闪光只收神闪：三选一有神闪就选（记成已神闪），
+    没有就跳过，琶音维持原样；触发的神闪等不能跳过时回传 False，照原本流程选。回传 True 表示已处理。"""
+    keyword = flash_priority[0] if flash_priority else ""
+    status = getattr(task, "node_status", None) or {}
+    if not (keyword and _specific_flash_enabled(task) and status.get("get_specific_flash")
+            and not status.get("arpeggio_divine") and any(keyword in card["name"] for card in cards)):
+        return False
+    from preset_deck import _card_has_big_divine  # preset_deck 依赖 utils，放这里避免循环 import
+    divine = next((card for card in cards if _card_has_big_divine(task, card)), None)
+    names = [card["name"] for card in cards]
+    if divine is not None:
+        status["arpeggio_divine"] = True
+        task.log_info(f"「{keyword}」闪光出现神闪，选择「{divine['name']}」")
+        _journal(task, "灵光一闪效果", f"神闪 {divine['name']}｜{divine.get('description', '')[:60]}")
+        _move_and_click(task, divine["x"], divine["y"])
+        _confirm_divine_flash(task)
+        return True
+    if _find_flash_skip_box(task) is not None:
+        task.log_info(f"「{keyword}」闪光三选一{names}没有神闪，跳过（{keyword}维持原样）")
+        _journal(task, "灵光一闪效果", f"跳过（{keyword} 没出神闪）")
+        _click_flash_skip(task)
+        return True
+    return False
+
+
 def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=False):
     """卡牌闪光（查看原件）事件: 按类型特征识别卡牌，并按闪光优先级选择。
 
@@ -5141,6 +5171,8 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         normalized_keyword = re.sub(r"\s+", "", keyword)
         if normalized_keyword:
             flash_priority.append(normalized_keyword)
+    if _divine_only_flash(task, cards, flash_priority):
+        return True
     chosen_card = None
     if card_chooser is not None:
         try:
@@ -5500,6 +5532,7 @@ def reset_layer_status(task: TriggerTask):
         task.node_status['get_specific_flash'] = keep['get_specific_flash']
         task.node_status['removed_card_count'] = keep['removed_card_count']
         task.node_status['neutral_card_count'] = keep['neutral_card_count']
+        task.node_status['arpeggio_divine'] = ns.get('arpeggio_divine', False)
 
 
 def handle_close_button(task: TriggerTask):
