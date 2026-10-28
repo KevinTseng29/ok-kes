@@ -818,6 +818,10 @@ msgid "这一项没有截图"
 msgstr "這一項沒有截圖"
 
 #: src/ui/run_overview.py
+msgid "开始"
+msgstr "開始"
+
+#: src/ui/run_overview.py
 msgid "战绩"
 msgstr "戰績"
 
@@ -876,6 +880,10 @@ msgstr "裝備"
 #: src/ui/run_overview.py
 msgid "号位"
 msgstr "號位"
+
+#: src/ui/run_overview.py
+msgid "暂停"
+msgstr "暫停"
 
 #: src/ui/run_overview.py
 msgid "本局结束后停止（再按取消）"

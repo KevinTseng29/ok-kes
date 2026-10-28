@@ -1,5 +1,6 @@
 """運行總覽分頁（仿 ALAS）：左邊狀態欄、右邊即時日誌，一直都在，不擠進即時觸發頁。
 
+- 開始／暫停：跟開始頁的開始鍵同一套；在開始頁按開始後也跳到這一頁。
 - 戰績：src/run_stats.py 存檔的「今日」與「全部」，重啟不歸零，可重置。
 - 本局：正在跑的卡厄思／出擊任務的 info（層數、節點、信用點……）與日誌裡的生命值。
 - 主練：刷存档主战员、三格裝備（名稱、品質，效果放在提示）、預設卡組各卡牌已有／需要張數。
@@ -12,8 +13,8 @@ import html
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (BodyLabel, CaptionLabel, CheckBox, FluentIcon, MessageBox,
-                            NavigationItemPosition, PlainTextEdit, PushButton, SmoothScrollArea, StrongBodyLabel,
-                            TogglePushButton, isDarkTheme)
+                            NavigationItemPosition, PlainTextEdit, PrimaryPushButton, PushButton, SmoothScrollArea,
+                            StrongBodyLabel, TogglePushButton, isDarkTheme)
 
 from ok import og
 from ok.gui.Communicate import communicate
@@ -26,9 +27,13 @@ MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieMode', 'StoryMode')
 
 
 def install():
-    """即時觸發頁上方的任務資訊表（含 Log）只在「目前任務」不是空的時候顯示；觸發式任務每一輪
-    跑完就清空，表格一下出現一下消失，版面一直跳動。這些資訊改由運行總覽顯示，所以這裡固定隱藏。
-    在建立 ok.OK 之前呼叫；一次性任務頁不受影響。"""
+    """在建立 ok.OK 之前呼叫。
+
+    - 即時觸發頁上方的任務資訊表（含 Log）只在「目前任務」不是空的時候顯示；觸發式任務每一輪
+      跑完就清空，表格一下出現一下消失，版面一直跳動。這些資訊改由運行總覽顯示，所以固定隱藏；
+      一次性任務頁不受影響。
+    - 在開始頁按開始後，框架預設跳到第一個一次性任務頁，但這裡跑的都是觸發式任務，改跳運行總覽。"""
+    from ok.gui.MainWindow import MainWindow
     from ok.gui.tasks.TriggerTaskTab import TriggerTaskTab
     if getattr(TriggerTaskTab, '_info_hidden', False):
         return
@@ -38,6 +43,14 @@ def install():
         self.task_info_container.hide()
 
     TriggerTaskTab.update_info_table = update_info_table
+    original_startup_tab = MainWindow.startup_task_tab
+
+    def startup_task_tab(self):
+        return RunOverviewTab.instance or original_startup_tab(self)
+
+    MainWindow.startup_task_tab = startup_task_tab
+
+
 MAX_LOG_LINES = 3000
 STATUS_WIDTH = 360
 LOG_COLORS = {'WARNING': '#d08700', 'ERROR': '#e04848', 'CRITICAL': '#e04848', 'DEBUG': '#8a8a8a'}
@@ -72,9 +85,11 @@ def _value_label():
 
 
 class RunOverviewTab(CustomTab):
+    instance = None  # 給 install() 換掉的「開始後跳到哪一頁」用
 
     def __init__(self):
         super().__init__()
+        RunOverviewTab.instance = self
         self._hp = None
         self._follow = True
 
@@ -88,6 +103,7 @@ class RunOverviewTab(CustomTab):
         self.add_widget(row, 1)
 
         communicate.log.connect(self._on_log)
+        communicate.executor_paused.connect(lambda paused: self._sync_start_button())
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_status)
         self._timer.start(1000)
@@ -115,6 +131,10 @@ class RunOverviewTab(CustomTab):
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
+        # 跟開始頁的開始鍵同一套：暫停中就開始（跑設定裡啟用的模式），執行中就暫停
+        self.start_button = PrimaryPushButton(FluentIcon.PLAY, _tr('开始'))
+        self.start_button.clicked.connect(self._toggle_start)
+        layout.addWidget(self.start_button)
         layout.addWidget(_section(_tr('战绩')))
         self.stats_label = _value_label()
         layout.addWidget(self.stats_label)
@@ -160,6 +180,7 @@ class RunOverviewTab(CustomTab):
         if not self.isVisible():
             return
         try:
+            self._sync_start_button()
             self.stats_label.setText(self._stats_html())
             task = self._active_task()
             self.run_label.setText(self._run_html(task))
@@ -236,6 +257,24 @@ class RunOverviewTab(CustomTab):
             color = 'gray' if done else ('#d08700' if owned else 'inherit')
             lines.append(f"<span style='color:{color}'>{html.escape(_show(card))}　{have}/{needed}</span>")
         return lines
+
+    @staticmethod
+    def _toggle_start():
+        executor = getattr(og, 'executor', None)
+        if executor is None:
+            return
+        if executor.paused:
+            og.app.start_controller.start()
+        else:
+            executor.pause()
+
+    def _sync_start_button(self):
+        executor = getattr(og, 'executor', None)
+        paused = executor is None or executor.paused
+        hotkey = (getattr(executor, 'basic_options', None) or {}).get('Start/Stop')
+        suffix = f'({hotkey})' if hotkey and hotkey != 'None' else ''
+        self.start_button.setText((_tr('开始') if paused else _tr('暂停')) + suffix)
+        self.start_button.setIcon(FluentIcon.PLAY if paused else FluentIcon.PAUSE)
 
     def _sync_stop_button(self, task):
         wanted = bool(task is not None and getattr(task, '_stop_after_round', False))
