@@ -134,7 +134,7 @@ class TestSortieModeExperimental(unittest.TestCase):
         keys = list(task.default_config)
         index = keys.index("闪光卡牌列表")
         self.assertEqual(keys[index + 1:index + 3], ["闪光优先级", "首层刷特定闪光"])
-        extra = ("闪光优先级", "首层刷特定闪光", "命运优先级")
+        extra = ("闪光优先级", "首层刷特定闪光", "命运优先级", "检索优先级")
         self.assertEqual([k for k in keys if k not in extra], list(base.default_config))
         self.assertIn("命运优先级", task.config_description)
         self.assertIn("撤退", task.config_description["首层刷特定闪光"])

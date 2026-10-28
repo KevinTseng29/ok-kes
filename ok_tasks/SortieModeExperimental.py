@@ -16,6 +16,7 @@ from SortieMode import SortieMode
 _FLASH_PRIORITY_KEY = "闪光优先级"
 _SPECIFIC_FLASH_KEY = "首层刷特定闪光"
 _FATE_PRIORITY_KEY = "命运优先级"
+_SEARCH_PRIORITY_KEY = "检索优先级"
 
 
 class SortieModeExperimental(SortieMode):
@@ -36,7 +37,12 @@ class SortieModeExperimental(SortieMode):
                 rebuilt[_FLASH_PRIORITY_KEY] = []
                 rebuilt[_SPECIFIC_FLASH_KEY] = False
         rebuilt[_FATE_PRIORITY_KEY] = []
+        rebuilt[_SEARCH_PRIORITY_KEY] = []
         self.default_config = rebuilt
+        self.config_description[_SEARCH_PRIORITY_KEY] = (
+            "战斗中检索选卡（例如聚光灯「最多选择2张节奏卡牌」）依序挑名称含这些字的卡，同一个字命中好几张先挑编号小的"
+            "（琶音 0→5）；没填就照出牌优先级，都没命中随便挑。"
+        )
         self.config_description[_FATE_PRIORITY_KEY] = (
             "选命运时依序找名称含这些字的命运（例如轻盈身法、公平的交易），都没有就随机选。填繁体或简体都可以。"
         )
@@ -50,7 +56,8 @@ class SortieModeExperimental(SortieMode):
             "2. 三选一里有「闪光优先级」第一项（例如琶音）就选它，记为已刷到；没有就按跳过，留到下一个篝火再闪；"
             "触发的神闪不能跳过时随便选一个；\n"
             "3. 第一层打完（领完结算奖励）还没刷到就撤退重开（通关第一层会返还体力）；刷到了就照常继续打。\n"
-            "刷到之后不再闪那张卡，闪光改用列表其余的卡。"
+            "刷到之后不再闪那张卡，闪光改用列表其余的卡；列表的卡都没得闪时改闪名称含「闪光优先级」第一项的卡（琶音），"
+            "那张卡的三选一只收神闪，没有就跳过（琶音维持原样），收到神闪后就不再这样闪。"
         )
 
     def _seed_from_sortie_config(self):
@@ -68,6 +75,7 @@ class SortieModeExperimental(SortieMode):
                 seeded.setdefault(_FLASH_PRIORITY_KEY, [])
                 seeded.setdefault(_SPECIFIC_FLASH_KEY, False)
         seeded.setdefault(_FATE_PRIORITY_KEY, [])
+        seeded.setdefault(_SEARCH_PRIORITY_KEY, [])
         # 实验模式首次创建默认不自动开启，避免重启后两个出击模式互相抢占
         seeded["_enabled"] = False
         write_json_file(own_file, seeded)
