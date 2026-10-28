@@ -71,6 +71,31 @@ class TestSpecificFlash(unittest.TestCase):
         self.assertNotIn("click_skip", t.logs)
 
 
+class TestFatePriority(unittest.TestCase):
+    """選命運：先找「命运优先级」列的（設定可填繁體），都沒有才隨機。"""
+
+    def run_page(self, names, priority):
+        prompt = SimpleNamespace(name="请选择你的命运", x=600, y=660, width=80, height=20)
+        titles = [SimpleNamespace(name=name, x=300 + 250 * i, y=380, width=120, height=20) for i, name in enumerate(names)]
+        t = SimpleNamespace(width=1280, height=720, logs=[], all_texts=titles, config={"命运优先级": priority},
+                            node_status={"pass_final_boss_count": 0}, clicked=[])
+        t.log_info = lambda message, notify=False: t.logs.append(message)
+        t.sleep = lambda seconds: None
+        t.click_box = t.clicked.append
+        with patch.object(utils, "find_box_at_point", return_value=prompt),                 patch.object(utils, "_get_game_text", side_effect=lambda task, text: text):
+            self.assertTrue(utils.handle_destiny_choice(t))
+        return t
+
+    def test_priority_fate_chosen(self):
+        t = self.run_page(["得70信用点数。", "公平的交易", "轻盈身法"], ["輕盈身法", "公平的交易"])  # 繁體設定也能對上
+        self.assertEqual(t.clicked[0].name, "轻盈身法")
+        self.assertEqual([f["name"] for f in t._run_fates], ["轻盈身法"])  # 記進這局的命運統計
+
+    def test_random_when_none_listed(self):
+        t = self.run_page(["得70信用点数。", "恢复体力"], ["轻盈身法"])
+        self.assertEqual(len(t.clicked), 1)
+
+
 class TestSortieModeExperimental(unittest.TestCase):
     """出擊實驗模式：閃光優先級和首層刷特定閃光接在閃光卡牌列表後面，都有說明；其餘設定和出擊模式一樣。"""
 
@@ -82,7 +107,9 @@ class TestSortieModeExperimental(unittest.TestCase):
         keys = list(task.default_config)
         index = keys.index("闪光卡牌列表")
         self.assertEqual(keys[index + 1:index + 3], ["闪光优先级", "首层刷特定闪光"])
-        self.assertEqual([k for k in keys if k not in ("闪光优先级", "首层刷特定闪光")], list(base.default_config))
+        extra = ("闪光优先级", "首层刷特定闪光", "命运优先级")
+        self.assertEqual([k for k in keys if k not in extra], list(base.default_config))
+        self.assertIn("命运优先级", task.config_description)
         self.assertIn("撤退", task.config_description["首层刷特定闪光"])
         self.assertTrue(task.specific_flash_skip)
         self.assertEqual(task.name, "自动出击模式（实验）")

@@ -2314,8 +2314,15 @@ def handle_destiny_choice(task: TriggerTask):
             and b.name not in ["确认", "返回", "跳过"]
         ]
         if titles:
-            chosen = random.choice(titles)
-            task.log_info(f"随机选择命运: {chosen.name}")
+            chosen = None
+            for keyword in _get_card_list(task, "命运优先级"):
+                chosen = next((b for b in titles if keyword and keyword in b.name), None)
+                if chosen:
+                    task.log_info(f"命运优先级匹配「{keyword}」: {chosen.name}")
+                    break
+            if chosen is None:
+                chosen = random.choice(titles)
+                task.log_info(f"随机选择命运: {chosen.name}")
             _note_fate(task, chosen.name)
             task.click_box(chosen)
             task.sleep(1)

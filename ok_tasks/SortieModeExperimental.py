@@ -1,8 +1,9 @@
 """自动出击模式（实验）。
 
-除下面两项外，其余配置和行为与自动出击模式完全一致：
+除下面三项外，其余配置和行为与自动出击模式完全一致：
 - 「闪光优先级」：灵光一闪三选一时按效果关键字挑（出击模式原本随机）
 - 「首层刷特定闪光」：第一层专心刷指定卡牌的指定效果，没刷到就打完第一层撤退
+- 「命运优先级」：选命运时先找列出的命运，都没有才随机（出击模式原本随机）
 首次创建时自动继承 configs/SortieMode.json 的当前配置；任务配置独立保存在 configs/SortieModeExperimental.json。
 """
 import os
@@ -14,6 +15,7 @@ from SortieMode import SortieMode
 
 _FLASH_PRIORITY_KEY = "闪光优先级"
 _SPECIFIC_FLASH_KEY = "首层刷特定闪光"
+_FATE_PRIORITY_KEY = "命运优先级"
 
 
 class SortieModeExperimental(SortieMode):
@@ -33,7 +35,11 @@ class SortieModeExperimental(SortieMode):
             if key == "闪光卡牌列表":
                 rebuilt[_FLASH_PRIORITY_KEY] = []
                 rebuilt[_SPECIFIC_FLASH_KEY] = False
+        rebuilt[_FATE_PRIORITY_KEY] = []
         self.default_config = rebuilt
+        self.config_description[_FATE_PRIORITY_KEY] = (
+            "选命运时依序找名称含这些字的命运（例如轻盈身法、公平的交易），都没有就随机选。填繁体或简体都可以。"
+        )
         self.config_description[_FLASH_PRIORITY_KEY] = (
             "灵光一闪三选一时，依序找效果（或名称）含这些关键字的选项，例如「琶音」「移动至手牌并发动」；"
             "都没有就随机选。"
@@ -61,6 +67,7 @@ class SortieModeExperimental(SortieMode):
             if key == "闪光卡牌列表":
                 seeded.setdefault(_FLASH_PRIORITY_KEY, [])
                 seeded.setdefault(_SPECIFIC_FLASH_KEY, False)
+        seeded.setdefault(_FATE_PRIORITY_KEY, [])
         # 实验模式首次创建默认不自动开启，避免重启后两个出击模式互相抢占
         seeded["_enabled"] = False
         write_json_file(own_file, seeded)
@@ -74,4 +81,4 @@ class SortieModeExperimental(SortieMode):
         super().load_config()
 
     def _check_upload_if_needed(self):
-        """实验模式多了闪光优先级和首层刷特定闪光，不上传到热门配置。"""
+        """实验模式多了闪光优先级、首层刷特定闪光和命运优先级，不上传到热门配置。"""

@@ -452,6 +452,12 @@ def handle_secret_enemy(task: TriggerTask):
     return False
 
 
+def _card_sequence_number(card):
+    """卡名里的编号，例如「节奏：琶音（2）」→ 2；没有编号排最后。"""
+    match = re.search(r"[（(]\s*(\d+)\s*[)）]", card["name"])
+    return int(match.group(1)) if match else 99
+
+
 def handle_battle_page(task: TriggerTask):
     """战斗页面: 优先按"出牌优先级"配置出牌；找不到优先级中的牌时按当前手牌数从大到小兜底尝试。"""
 
@@ -517,7 +523,9 @@ def handle_battle_page(task: TriggerTask):
         play_priority = _get_config_value(task, "出牌优先级", [])
         if play_priority and cards:
             for pri_name in play_priority:
-                matched = next((c for c in cards if pri_name and (pri_name in c["name"] or c["name"] in pri_name) and c["key"] is not None), None)
+                # 同一个关键字命中好几张时先出编号小的：琶音照（0）→（5）的顺序打，后面的费用才会降到 0
+                matched = min((c for c in cards if pri_name and (pri_name in c["name"] or c["name"] in pri_name)
+                               and c["key"] is not None), key=_card_sequence_number, default=None)
                 if matched:
                     # 检测当前匹配到的卡牌是否与上次尝试打出的是同一张且仍在手牌中
                     if task._last_attempted_card == matched["name"]:

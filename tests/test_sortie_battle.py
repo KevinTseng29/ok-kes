@@ -70,6 +70,19 @@ class TestUnplayablePriorityCard(unittest.TestCase):
         fallback.assert_called_once_with(t, 2)  # 第二次還在手上就改兜底
 
 
+class TestArpeggioOrder(unittest.TestCase):
+    """好幾張琶音同時在手上：照編號 0→5 先出小的（後面的費用才會降到 0）。"""
+
+    def test_lowest_number_first(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["琶音", "节奏"]}
+        hand = [{"name": "节奏：琶音（3)", "key": "1"}, {"name": "琶音（0)", "key": "2"},
+                {"name": "节奏：琶音(2)", "key": "3"}, {"name": "节奏", "key": "4"}]
+        with patch.object(utils_sortie, "_read_hand_count", return_value=4),                 patch.object(utils_sortie, "mark_battle"),                 patch.object(utils_sortie, "_hand_card_names", return_value=[SimpleNamespace(name=c["name"]) for c in hand]),                 patch.object(utils_sortie, "_hand_cards", return_value=hand):
+            utils_sortie.handle_battle_page(t)
+        self.assertEqual(t.keys, ["2", "enter"])
+
+
 class TestEndTurnWhenNothingPlayable(unittest.TestCase):
     """兜底出牌每張都按過、手牌卻沒變（AP 不夠）：自己按 E 結束回合，不再一直循環跳 AP 不足。"""
 
