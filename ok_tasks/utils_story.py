@@ -1,3 +1,6 @@
+import re
+import time
+
 from ok import TriggerTask
 
 from dialogue import auto_chat_speed
@@ -139,6 +142,33 @@ def handle_enter_stage(task: TriggerTask):
     return False
 
 
+_TEAM_ENTER_TRIES = 3  # 配置队伍页连点几次进入没反应就停
+_TEAM_ENTER_RETRY_AFTER = 30  # 停下后隔多久再试一次
+
+
+def handle_team_enter(task: TriggerTask):
+    """配置队伍页面的进入按钮。队伍没配满时游戏不让进，点了没反应也没有提示；
+    连点几次还停在这页就提醒手动配置队伍，之后隔一段时间才再点一次（配好了就进得去）。"""
+    title = find_box_at_point(task, 0.122, 0.047)
+    if not (title and "配置队伍" in title.name):
+        task._team_enter_clicks = 0
+        return False
+    clicks = getattr(task, "_team_enter_clicks", 0)
+    if clicks >= _TEAM_ENTER_TRIES and time.time() - task._team_enter_last_click < _TEAM_ENTER_RETRY_AFTER:
+        return True  # 等手动配置队伍，这段时间不点
+    if not handle_enter(task):
+        return False
+    task._team_enter_clicks = clicks + 1
+    task._team_enter_last_click = time.time()
+    if task._team_enter_clicks == _TEAM_ENTER_TRIES:
+        task.log_info(
+            f"配置队伍页面点了{_TEAM_ENTER_TRIES}次进入都没反应，可能队伍没配满，"
+            f"请手动配置队伍（每{_TEAM_ENTER_RETRY_AFTER}秒再试一次）",
+            notify=True,
+        )
+    return True
+
+
 def handle_enter_story_or_battle(task: TriggerTask):
     """故事/战斗入口页面: 点击最左侧的enterstory或enterbattle特征。"""
     search_box = task.box_of_screen(0.085, 0.124, 0.995, 0.874)
@@ -155,9 +185,62 @@ def handle_enter_story_or_battle(task: TriggerTask):
             f"（x={chosen_box.x}, confidence={chosen_box.confidence:.2f}）"
         )
         task.click_box(chosen_box)
+        # 这一章还有关卡可进，翻章的记录重来
+        task._story_chapter_switches = 0
+        task._story_switched_from = task._story_chapter_blocked = None
         task.sleep(2)
         return True
     return False
+
+
+_NEXT_CHAPTER = (0.746, 0.044)  # 故事地图顶部章节列右侧的 ▷
+_CHAPTER_IDLE_FRAMES = 3  # 连续几帧都没有可进入的关卡才翻章，避免地图还没载完就翻
+_CHAPTER_IDLE_GAP = 5  # 两帧相隔超过这么久（中间在别的页面）就重新数
+_CHAPTER_MAX_SWITCHES = 3  # 连翻几章都没有关卡可点就停下提醒
+
+
+def _story_map_chapter(task: TriggerTask):
+    """在故事地图（左上「故事」、顶部中间章节名）上回传当前章节名，例如「序章」「第1章」；不是故事地图回传 None。"""
+    def in_header(box, x1, x2):
+        cx = (box.x + box.width / 2) / task.width
+        cy = (box.y + box.height / 2) / task.height
+        return x1 <= cx <= x2 and cy <= 0.09
+
+    if not any(box.name.strip() == "故事" and in_header(box, 0.0, 0.2) for box in task.all_texts):
+        return None
+    for box in task.all_texts:
+        match = re.search(r"序章|第\s*\d+\s*章", box.name)
+        if match and in_header(box, 0.4, 0.6):
+            return re.sub(r"\s", "", match.group())
+    return None
+
+
+def handle_next_chapter(task: TriggerTask):
+    """故事地图上这一章的关卡都完成了（没有可进入的关卡）就点顶部 ▷ 切到下一章。
+    排在最后：前面的处理函数都没命中、连续几帧都是这样才翻；翻了章节名没变（最后一章或还没开放），
+    或连翻几章都没有关卡可点，就提醒一次后停手，不一直点。"""
+    chapter = _story_map_chapter(task)
+    now = time.time()
+    frames = getattr(task, "_story_idle_frames", 0)
+    if (chapter is None or chapter != getattr(task, "_story_idle_chapter", None)
+            or now - getattr(task, "_story_idle_at", 0) > _CHAPTER_IDLE_GAP):
+        frames = 0  # 换了章节（地图刚载入）或中间在别的页面，重新数
+    task._story_idle_at, task._story_idle_chapter = now, chapter
+    task._story_idle_frames = frames + 1 if chapter else 0
+    if task._story_idle_frames < _CHAPTER_IDLE_FRAMES or chapter == getattr(task, "_story_chapter_blocked", None):
+        return False
+    switches = getattr(task, "_story_chapter_switches", 0)
+    if chapter == getattr(task, "_story_switched_from", None) or switches >= _CHAPTER_MAX_SWITCHES:
+        task._story_chapter_blocked = chapter
+        task.log_info(f"故事地图{chapter}没有可进入的关卡，也切不到有关卡的下一章，请手动处理", notify=True)
+        return False
+    task.log_info(f"故事地图{chapter}没有可进入的关卡，点击 ▷ 切到下一章")
+    _move_and_click(task, *_NEXT_CHAPTER)
+    task._story_switched_from = chapter
+    task._story_chapter_switches = switches + 1
+    task._story_idle_frames = 0
+    task.sleep(2)
+    return True
 
 
 def handle_skip_story(task: TriggerTask):
@@ -193,6 +276,7 @@ PAGE_HANDLERS = [
     handle_skip_story,  #跳过剧情
     handle_view_event,  #查看事件
     handle_confirm,  #确认按钮
+    handle_team_enter,  #配置队伍页的进入按钮（队伍没配满就停手提醒）
     handle_enter,  #进入按钮
     handle_enter_stage,  #入场按钮
     handle_close_page,  #点击屏幕关闭页面
@@ -202,5 +286,6 @@ PAGE_HANDLERS = [
     handle_battle_auto_check,  #自动战斗检测
     handle_event_task,  #事件任务（倒数第三优先级）
     handle_auto_chat,  #自动对话检查（倒数第二优先级）
-    handle_close_dialog,  #关闭剧情对话弹窗（最低优先级）
+    handle_close_dialog,  #关闭剧情对话弹窗
+    handle_next_chapter,  #这一章打完切到下一章（最低优先级）
 ]
