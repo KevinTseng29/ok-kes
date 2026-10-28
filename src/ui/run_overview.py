@@ -210,11 +210,11 @@ class RunOverviewTab(CustomTab):
             ]
             fates = run_stats.fate_summary(modes=modes)[:FATE_ROWS]
             if fates:
-                lines.append(f"<span style='color:gray'>{_tr('命运（选过的局胜率）')}</span>")
+                lines.append(f"<span style='color:gray'>{_tr('命运（选过的局打到第几层）')}</span>")
                 for item in fates:
                     floors = '/'.join(f"{floor}{_tr('层')}×{count}" for floor, count in sorted(item['floors'].items()))
                     lines.append(f"{html.escape(_show(item['name']))}　{floors}　"
-                                 f"{run_stats.rate_text(item['wins'], item['losses'])}")
+                                 f"{html.escape(run_stats.floors_text(item))}")
         if since:
             lines.append(f"<span style='color:gray'>{_tr('自')} {since} {_tr('起')}</span>")
         return '<br>'.join(lines)

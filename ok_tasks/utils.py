@@ -2308,6 +2308,17 @@ def _journal(task: TriggerTask, kind, detail):
         task.log_info(f"记录历程失败：{e}")
 
 
+def _note_equipment(task: TriggerTask, name, slot):
+    """记下这局装上的装备（第几层、几号位），探险结果时连同打过几层存进战绩，统计各装备的效果。"""
+    floor = (getattr(task, "node_status", None) or {}).get("pass_final_boss_count", 0) + 1
+    items = task.__dict__.setdefault("_run_equipment", [])
+    entry = {"floor": floor, "name": name.strip(), "slot": slot + 1}
+    if items and items[-1] == entry:
+        return  # 页面又处理一次
+    items.append(entry)
+    _journal(task, "装备", f"{slot + 1}号位 {name.strip()}")
+
+
 def _note_fate(task: TriggerTask, name):
     """记下这局在第几层选了哪个命运，探险结果时连同胜负存进战绩（统计各命运的胜率）。
     同一层 10 秒内又选（确认前页面又处理了一次）就当成改选，取代上一笔。"""
@@ -3122,6 +3133,7 @@ def handle_equipment(task: TriggerTask):
             return False
         equipment_desc = new_equipment["description"]
         task.log_info(f"待安装装备描述: 「{equipment_desc}」")
+        _journal(task, "装备候选", f"{new_equipment.get('name', '')}｜{equipment_desc[:60]}")
 
         lv_texts = _find_member_level_tags(
             task,
@@ -3220,6 +3232,7 @@ def handle_equipment(task: TriggerTask):
                 f"原因={install_reason}，"
                 f"安装给{member_label}"
             )
+            _note_equipment(task, new_equipment["name"], slot)
             _move_and_click(task, 0.756, (chosen.y + chosen.height / 2) / task.height)
             task.sleep(1)
             if is_purchase_page:
@@ -5249,7 +5262,8 @@ def _record_round(task: TriggerTask, succeeded):
         status = getattr(task, "node_status", None) or {}
         fates = [{"floor": f["floor"], "name": f["name"]} for f in getattr(task, "_run_fates", [])]
         run_stats.record(succeeded, type(task).__name__, fates=fates,
-                         floors=status.get("pass_final_boss_count", 0))
+                         floors=status.get("pass_final_boss_count", 0),
+                         equipment=getattr(task, "_run_equipment", []))
         _journal(task, "结果", "成功" if succeeded else "失败")
     except Exception as e:
         task.log_info(f"记录战绩失败：{e}")
@@ -5389,6 +5403,7 @@ def reset_mission_status(task: TriggerTask):
         task.node_status['save_target_member'] = keep['save_target_member']
     task.member_status = _initial_member_status()
     task._run_fates = []  # 这一局选的命运（_note_fate），已随战绩存档
+    task._run_equipment = []  # 这一局装上的装备（_note_equipment）
     task._run_id = None  # 下一局的历程（_journal）另起一个 run
     _clear_run_state(task)  # 这一局结束，存档的主练装备不再适用
     task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认

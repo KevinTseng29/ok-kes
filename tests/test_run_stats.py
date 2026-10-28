@@ -59,6 +59,21 @@ class TestRunStats(unittest.TestCase):
         self.assertEqual(run_stats.fate_summary(self.path)[1]['picks'], 2)  # 不分模式
         with open(self.path, encoding='utf-8') as f:
             self.assertEqual(json.load(f)['rounds'][0]['floors'], 3)
+        light = fates[0]
+        self.assertEqual((light['counted'], light['avg_floors'], light['full_clears']), (2, 2.5, 1))
+        self.assertEqual(run_stats.floors_text(light), '平均 2.5 層、三層通關 1/2')
+
+    def test_equipment_summary(self):
+        """裝備跟命運一樣統計：裝過的局平均打到第幾層、三層通關幾局。"""
+        run_stats.record(True, 'SortieMode', self.path, floors=1,
+                         equipment=[{'floor': 1, 'name': '誓死拳甲', 'slot': 2}])
+        run_stats.record(True, 'SortieMode', self.path, floors=3,
+                         equipment=[{'floor': 2, 'name': '誓死拳甲', 'slot': 2},
+                                    {'floor': 2, 'name': '无眼者之瞳', 'slot': 3}])
+        items = {item['name']: item for item in run_stats.equipment_summary(self.path)}
+        self.assertEqual((items['誓死拳甲']['picks'], items['誓死拳甲']['avg_floors'],
+                          items['誓死拳甲']['full_clears']), (2, 2.0, 1))
+        self.assertEqual(items['无眼者之瞳']['floors'], {2: 1})
 
     def test_reset_and_missing_file(self):
         self.assertEqual(run_stats.summary(self.path)['total'], (0, 0))
