@@ -81,6 +81,9 @@ def _is_card_name(name):
     # 包含"攻"且长度<=3的文本不是卡牌名（如"X攻"、"基本攻"）
     if "攻" in name and len(name) <= 3:
         return False
+    # 类型标签（四技能、基本技能）OCR 读歪成「西技」「浴技」之类：含「技」且很短的也不是卡牌名
+    if "技" in name and len(name) <= 3:
+        return False
     return True
 
 
@@ -628,8 +631,8 @@ def handle_battle_page(task: TriggerTask):
     card_names = _hand_card_names(task)
     cards = _hand_cards(task)
     ap = _read_ap(task)
-    observed = (hand_count, ap, tuple(sorted(c["name"] for c in cards)),
-                tuple(sorted(getattr(b, "name", str(b)) for b in card_names)))
+    # 只用手牌数和 AP 判断画面稳定：卡名 OCR 每帧会有一点抖动（读歪、多读一个标签），拿来比会一直不稳、永远不出牌（01:18 Boss 战卡住）
+    observed = hand_count  # AP 也可能某一帧读不到，同样不拿来比
     if getattr(task, "_battle_last_observed", None) != observed:
         # 抽牌、出牌动画还在播时不动作，等下一帧手牌一样再出牌（连续塞按键可能让游戏卡死）
         task._battle_last_observed = observed
