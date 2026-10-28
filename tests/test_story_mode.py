@@ -61,47 +61,55 @@ class StoryCase(unittest.TestCase):
 
 
 class TestNextChapter(StoryCase):
-    """一章打完（地圖上沒有可進入的關卡）就點 ▷ 切到下一章，切不動就提醒一次後停手。"""
+    """一章打完（地圖上持續看不到可進入的關卡）就點 ▷ 切到下一章；只往後翻一章，切不動或下一章也沒關卡就提醒後停手。"""
 
-    def test_switches_after_idle_frames(self):
+    IDLE = utils_story._CHAPTER_IDLE_SECONDS // 2 + 1  # 每兩秒一幀，第幾幀到達閒置時間
+
+    def test_switches_after_idle_time(self):
         task = StoryTask(story_map())
-        self.assertEqual(self.frames(task, 3), [False, False, True])
+        self.assertEqual(self.frames(task, self.IDLE), [False] * (self.IDLE - 1) + [True])
         self.mock.assert_called_once_with(task, *utils_story._NEXT_CHAPTER)
+
+    def test_unlock_animation_does_not_switch(self):
+        # 打完關卡回到地圖，解鎖動畫期間幾秒內看不到入口：不翻章
+        task = StoryTask(story_map())
+        self.assertEqual(self.frames(task, self.IDLE - 1), [False] * (self.IDLE - 1))
+        self.mock.assert_not_called()
 
     def test_stops_when_chapter_does_not_change(self):
         task = StoryTask(story_map())
-        self.frames(task, 3)
-        self.assertEqual(self.frames(task, 6), [False] * 6)  # 章節名沒變：最後一章或未開放
+        self.frames(task, self.IDLE)
+        self.assertEqual(self.frames(task, 3 * self.IDLE), [False] * (3 * self.IDLE))  # 章節名沒變：最後一章或未開放
         self.assertEqual(self.mock.call_count, 1)
         self.assertEqual(len(task.notified), 1)
-        task.all_texts = story_map("第2章")  # 使用者手動切了章節，重新判斷
-        self.assertEqual(self.frames(task, 3), [False, False, True])
 
-    def test_stops_after_too_many_switches(self):
+    def test_goes_back_when_next_chapter_empty(self):
         task = StoryTask(story_map("第1章"))
-        for chapter in ("第1章", "第2章", "第3章", "第4章"):
-            task.all_texts = story_map(chapter)
-            self.frames(task, 3)
-        self.assertEqual(self.mock.call_count, utils_story._CHAPTER_MAX_SWITCHES)
+        self.frames(task, self.IDLE)
+        task.all_texts = story_map("第2章")
+        self.assertEqual(self.frames(task, self.IDLE)[-1], True)
+        self.mock.assert_called_with(task, *utils_story._PREV_CHAPTER)
         self.assertEqual(len(task.notified), 1)
+        task.all_texts = story_map("第1章")  # 切回原本那章後不再翻
+        self.assertEqual(self.frames(task, 3 * self.IDLE), [False] * (3 * self.IDLE))
+        self.assertEqual(self.mock.call_count, 2)
 
     def test_not_story_map_or_gap_resets(self):
         task = StoryTask([box("故事", 0.103, 0.046)])  # 沒有章節名：不是故事地圖
-        self.assertEqual(self.frames(task, 5), [False] * 5)
+        self.assertEqual(self.frames(task, 2 * self.IDLE), [False] * (2 * self.IDLE))
         task.all_texts = story_map()
-        self.assertEqual(self.frames(task, 3, step=10), [False] * 3)  # 中間隔太久（在別的頁面）重新數
+        self.assertEqual(self.frames(task, 4, step=8), [False] * 4)  # 中間隔太久（在別的頁面）重新計時
         self.mock.assert_not_called()
 
     def test_entry_click_resets_switch_record(self):
         task = StoryTask(story_map())
-        task._story_chapter_switches, task._story_switched_from, task._story_chapter_blocked = 2, "第1章", "第1章"
+        task._story_switched_from, task._story_chapter_blocked = "第1章", "第1章"
         entry = SimpleNamespace(x=720, confidence=0.9)
         task.box_of_screen = lambda *args: None
         task.find_feature = lambda feature_name, **kwargs: [entry] if feature_name == "enterstory" else []
         task.click_box = lambda chosen: None
         self.assertTrue(utils_story.handle_enter_story_or_battle(task))
-        self.assertEqual((task._story_chapter_switches, task._story_switched_from, task._story_chapter_blocked),
-                         (0, None, None))
+        self.assertEqual((task._story_switched_from, task._story_chapter_blocked), (None, None))
 
 
 class TestTeamEnter(StoryCase):

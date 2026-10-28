@@ -186,7 +186,6 @@ def handle_enter_story_or_battle(task: TriggerTask):
         )
         task.click_box(chosen_box)
         # 这一章还有关卡可进，翻章的记录重来
-        task._story_chapter_switches = 0
         task._story_switched_from = task._story_chapter_blocked = None
         task.sleep(2)
         return True
@@ -194,9 +193,10 @@ def handle_enter_story_or_battle(task: TriggerTask):
 
 
 _NEXT_CHAPTER = (0.746, 0.044)  # 故事地图顶部章节列右侧的 ▷
-_CHAPTER_IDLE_FRAMES = 3  # 连续几帧都没有可进入的关卡才翻章，避免地图还没载完就翻
-_CHAPTER_IDLE_GAP = 5  # 两帧相隔超过这么久（中间在别的页面）就重新数
-_CHAPTER_MAX_SWITCHES = 3  # 连翻几章都没有关卡可点就停下提醒
+_PREV_CHAPTER = (0.260, 0.044)  # 左侧的 ◁
+# 同一章地图上连续这么久都没有可进入的关卡才翻章：打完关卡回到地图时有解锁动画，入口会晚几秒才出现
+_CHAPTER_IDLE_SECONDS = 10
+_CHAPTER_IDLE_GAP = 5  # 两帧相隔超过这么久（中间在别的页面）就重新计时
 
 
 def _story_map_chapter(task: TriggerTask):
@@ -217,28 +217,33 @@ def _story_map_chapter(task: TriggerTask):
 
 def handle_next_chapter(task: TriggerTask):
     """故事地图上这一章的关卡都完成了（没有可进入的关卡）就点顶部 ▷ 切到下一章。
-    排在最后：前面的处理函数都没命中、连续几帧都是这样才翻；翻了章节名没变（最后一章或还没开放），
-    或连翻几章都没有关卡可点，就提醒一次后停手，不一直点。"""
+    排在最后：前面的处理函数都没命中、同一章持续一段时间都是这样才翻。只往后翻一章：
+    翻了章节名没变（最后一章或还没开放）就停手提醒；下一章也没有关卡可点（可能原本那章还有卡厄思关卡
+    或画面外的关卡）就点 ◁ 切回原本那章再提醒，不一直往后翻。"""
     chapter = _story_map_chapter(task)
     now = time.time()
-    frames = getattr(task, "_story_idle_frames", 0)
+    since = getattr(task, "_story_idle_since", now)
     if (chapter is None or chapter != getattr(task, "_story_idle_chapter", None)
             or now - getattr(task, "_story_idle_at", 0) > _CHAPTER_IDLE_GAP):
-        frames = 0  # 换了章节（地图刚载入）或中间在别的页面，重新数
-    task._story_idle_at, task._story_idle_chapter = now, chapter
-    task._story_idle_frames = frames + 1 if chapter else 0
-    if task._story_idle_frames < _CHAPTER_IDLE_FRAMES or chapter == getattr(task, "_story_chapter_blocked", None):
+        since = now  # 换了章节（地图刚载入）或中间在别的页面，重新计时
+    task._story_idle_at, task._story_idle_chapter, task._story_idle_since = now, chapter, since
+    if chapter is None or now - since < _CHAPTER_IDLE_SECONDS or chapter == getattr(task, "_story_chapter_blocked", None):
         return False
-    switches = getattr(task, "_story_chapter_switches", 0)
-    if chapter == getattr(task, "_story_switched_from", None) or switches >= _CHAPTER_MAX_SWITCHES:
+    switched_from = getattr(task, "_story_switched_from", None)
+    if chapter == switched_from:
         task._story_chapter_blocked = chapter
-        task.log_info(f"故事地图{chapter}没有可进入的关卡，也切不到有关卡的下一章，请手动处理", notify=True)
+        task.log_info(f"故事地图{chapter}没有可进入的关卡，也切不到下一章，请手动处理", notify=True)
         return False
+    task._story_idle_chapter = None  # 点了之后重新计时
+    if switched_from:
+        task.log_info(f"下一章{chapter}也没有可进入的关卡，切回{switched_from}，请手动处理", notify=True)
+        _move_and_click(task, *_PREV_CHAPTER)
+        task._story_chapter_blocked = switched_from
+        task.sleep(2)
+        return True
     task.log_info(f"故事地图{chapter}没有可进入的关卡，点击 ▷ 切到下一章")
     _move_and_click(task, *_NEXT_CHAPTER)
     task._story_switched_from = chapter
-    task._story_chapter_switches = switches + 1
-    task._story_idle_frames = 0
     task.sleep(2)
     return True
 
