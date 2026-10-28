@@ -52,10 +52,25 @@ class TestWaitForStableHand(unittest.TestCase):
 class TestUnreadableHand(unittest.TestCase):
     """手牌數不是 0 卻一張都認不出：等 → Enter（卡牌停在選目標狀態）→ 一幀按一張 → 都試過才按 E。"""
 
-    def test_unreadable_means_nothing_playable(self):
-        """打不起的牌會變暗往下沉、卡名掉出辨識區：先按一次 Enter（可能有牌停在選目標），再認不到就結束回合，不再一張張試。"""
+    def test_unreadable_tries_slowly_then_ends(self):
+        """連變暗的牌都認不到：Enter 一次，AP 不是 0 就一幀按一張，都試過才結束回合（不能直接把能出的牌丟掉）。"""
         t = battle_task()
-        self.assertEqual(run_battle(t, 4, [[]], hand_count=2), ["enter", "e"])
+        self.assertEqual(run_battle(t, 6, [[]], hand_count=2), ["enter", "2", "enter", "1", "enter", "e"])
+
+    def test_unreadable_with_zero_ap_ends(self):
+        t = battle_task()
+        with patch.object(utils_sortie, "_read_ap", return_value=0):
+            self.assertEqual(run_battle(t, 4, [[]], hand_count=2), ["enter", "e"])
+
+    def test_dim_cards_skipped(self):
+        """變暗沉下去的牌（打不起）不出；亮著的照優先級出；全部變暗就結束回合。"""
+        t = battle_task()
+        t.config = {"出牌优先级": ["聚光灯", "小丑"]}
+        hand = [{"name": "聚光灯", "key": "1", "dim": True}, {"name": "小丑", "key": "2", "dim": False}]
+        self.assertEqual(run_battle(t, 2, [hand]), ["2", "enter"])
+        t = battle_task()
+        t.config = {"出牌优先级": ["聚光灯"]}
+        self.assertEqual(run_battle(t, 2, [[dict(hand[0])]]), ["e"])
 
     def test_empty_hand_just_ends_turn(self):
         t = battle_task()

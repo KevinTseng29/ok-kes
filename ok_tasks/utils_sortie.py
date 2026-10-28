@@ -86,7 +86,7 @@ def _is_card_name(name):
 
 def _hand_card_names(task: TriggerTask):
     """读取手牌区域内的卡牌名，排除按键和类型标签文本。"""
-    x1, y1, x2, y2 = 0.159, 0.683, 0.836, 0.831
+    x1, y1, x2, y2 = 0.159, 0.683, 0.836, 0.900
 
     # 打印所有文本及其坐标，帮助判断手牌区域过滤问题
     task.log_info(f"_hand_card_names 区域: cx=[{x1}, {x2}], cy=[{y1}, {y2}]")
@@ -107,6 +107,13 @@ def _hand_card_names(task: TriggerTask):
               and _is_card_name(b.name)]
     task.log_info(f"_hand_card_names 区域共{len(boxes)}个文本，过滤后剩{len(result)}个: {[b.name for b in result]}")
     return result
+
+
+_DIM_CARD_CY = 0.82  # 打得起的牌亮起来浮在上面（卡名约 cy 0.75～0.78），打不起的变暗沉下去（约 0.845～0.89）
+
+
+def _is_dim_card(task: TriggerTask, name_box):
+    return (name_box.y + name_box.height / 2) / task.height > _DIM_CARD_CY
 
 
 def _card_cost(task: TriggerTask, name_box):
@@ -226,10 +233,10 @@ def _hand_cards(task: TriggerTask):
             best = min(candidates, key=lambda x: cx - x[0])
             used_keys.add(best[2])
             cards.append({"name": name_box.name, "key": best[2], "x": cx, "left_x": left_x,
-                          "cost": _card_cost(task, name_box)})
+                          "cost": _card_cost(task, name_box), "dim": _is_dim_card(task, name_box)})
         else:
             cards.append({"name": name_box.name, "key": None, "x": cx, "left_x": left_x,
-                          "cost": _card_cost(task, name_box)})
+                          "cost": _card_cost(task, name_box), "dim": _is_dim_card(task, name_box)})
 
     # 推断缺失的按键：用最小相邻间距作为 expected_spacing 进行插值
     # 以最近的前一张已有按键的卡牌为基准推算，避免累积误差
@@ -271,19 +278,19 @@ def _hand_cards(task: TriggerTask):
     return cards
 
 
-def _play_next_fallback_key(task: TriggerTask, count, signature):
+def _play_next_fallback_key(task: TriggerTask, count, signature, keys=None):
     """兜底出牌一次只按一张：按一个键、Enter，交回下一帧看手牌有没有变（像人一样按一张看一张）。
     手牌变了就从最右边重新数；同一手牌每个键都按过还是没变才回传 False（手上的牌都打不起，该结束回合）。
     原本一口气把每个键都按一遍再按 E，两次卡死前都是这样连按（2026-10-29 00:00、00:40）。"""
     state = getattr(task, "_fallback_keys", None)
     if not state or state["signature"] != signature:
-        state = task._fallback_keys = {"signature": signature, "next": min(count, 10)}
-    index = state["next"]
-    if index < 1:
+        order = list(reversed(keys)) if keys else ["0" if i == 10 else str(i) for i in range(min(count, 10), 0, -1)]
+        state = task._fallback_keys = {"signature": signature, "order": order}
+    if not state["order"]:
         task._fallback_keys = None
         return False
-    state["next"] = index - 1
-    key = "0" if index == 10 else str(index)
+    key = state["order"].pop(0)
+    index = len(state["order"]) + 1
     task.log_info(f"兜底出牌：按键 {key}（手牌数={count}，剩 {index - 1} 张没试）")
     task.send_key(key)
     task.sleep(0.8)
@@ -657,7 +664,8 @@ def handle_battle_page(task: TriggerTask):
         played = getattr(task, "_arpeggio_played", set())
         next_arpeggio = min(set(range(6)) - played, default=6)
         arpeggios = [c for c in cards if "琶音" in c["name"] and _card_sequence_number(c) < 99]
-        searchers = [c for c in cards if any(k in c["name"] for k in _SEARCH_CARD_KEYWORDS)
+        playable = [c for c in cards if not c.get("dim")]
+        searchers = [c for c in playable if any(k in c["name"] for k in _SEARCH_CARD_KEYWORDS)
                      and c["key"] is not None and _affordable(c, ap)]
         if arpeggios and searchers and min(map(_card_sequence_number, arpeggios)) > next_arpeggio:
             searcher = searchers[0]
@@ -668,12 +676,14 @@ def handle_battle_page(task: TriggerTask):
             task.send_key("enter")
             task.sleep(2)
             return True
-        # 检查"出牌优先级"配置
+        # 检查"出牌优先级"配置（只看亮着的牌）
+        if cards and not playable:
+            return _end_turn(task, f"手牌{[c['name'] for c in cards]}都变暗沉下去（都打不起）")
         play_priority = _get_config_value(task, "出牌优先级", [])
-        if play_priority and cards:
+        if play_priority and playable:
             for pri_name in play_priority:
                 # 同一个关键字命中好几张时先出编号小的：琶音照（0）→（5）的顺序打，后面的费用才会降到 0
-                matched = min((c for c in cards if pri_name and (pri_name in c["name"] or c["name"] in pri_name)
+                matched = min((c for c in playable if pri_name and (pri_name in c["name"] or c["name"] in pri_name)
                                and c["key"] is not None and _affordable(c, ap)),
                               key=_card_sequence_number, default=None)
                 if matched:
@@ -719,7 +729,8 @@ def handle_battle_page(task: TriggerTask):
             return _end_turn(task, f"AP{ap}，手牌费用{[c['cost'] for c in cards]}都打不起")
         if getattr(task, "_fallback_keys", None) is None:
             task.log_info(f"未命中出牌优先级，按当前手牌数{hand_count}从大到小兜底出牌（一次一张）")
-        if not _play_next_fallback_key(task, hand_count, hand_signature):
+        lit_keys = [c["key"] for c in playable if c.get("key")]
+        if not _play_next_fallback_key(task, hand_count, hand_signature, keys=lit_keys or None):
             return _end_turn(task, "兜底每张都按过、手牌没变（手上的牌都打不起）")
         return True
     else:
@@ -737,10 +748,15 @@ def handle_battle_page(task: TriggerTask):
                 task.send_key("enter")
                 task.sleep(2)
                 return True
-            # 打得起的牌会亮起来、往上浮；打不起的变暗往下沉，卡名掉出辨识区。
-            # 手牌区一张都认不到多半就是整手都打不起（AP 不够）：直接结束回合，不再一张张试（一直跳 AP 不足）
+            # 连变暗的牌都认不到（动画、特效挡住）：AP 是 0 才结束回合；否则一帧按一张慢慢试，都试过才结束
+            # （01:09:55 读不到就直接结束，把打得起的牌丢掉了）
+            if ap == 0:
+                task._unreadable_hand_frames = 0
+                return _end_turn(task, f"手牌数为{hand_count}认不出手牌，AP 0")
+            if _play_next_fallback_key(task, hand_count, ("认不出手牌", hand_count)):
+                return True
             task._unreadable_hand_frames = 0
-            return _end_turn(task, f"手牌数为{hand_count}但没有亮起来的牌（AP{ap}，都打不起）")
+            return _end_turn(task, f"手牌数为{hand_count}认不出手牌，每张都试过了")
         finishturn_box = task.box_of_screen(0.844, 0.782, 0.998, 0.990)
         if task.find_feature(feature_name="finishturn", box=finishturn_box):
             task.log_info("检测到finishturn特征，按E结束回合")
