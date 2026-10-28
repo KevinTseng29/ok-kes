@@ -478,6 +478,7 @@ def handle_battle_page(task: TriggerTask):
     cards = _hand_cards(task)
 
     if (cards or card_names):
+        task._unreadable_hand_frames = 0
         # 出牌卡手检测：追踪上一次尝试打出的卡牌是否连续多轮仍留在手牌中
         if not hasattr(task, '_play_stuck_count'):
             task._play_stuck_count = 0
@@ -525,6 +526,16 @@ def handle_battle_page(task: TriggerTask):
         _try_all_card_keys(task, hand_count)
         return True
     else:
+        # 手牌数不是 0 却一张都认不出：多半有卡牌停在选目标状态（手牌被挤到下面），这时按 E 没反应。
+        # 例如出牌按了数字键、还没按 Enter 就被中断（重启 ok-kes）。连续两次这样就按 Enter 把那张牌打出去
+        if hand_count:
+            task._unreadable_hand_frames = getattr(task, "_unreadable_hand_frames", 0) + 1
+            if task._unreadable_hand_frames >= _UNREADABLE_HAND_FRAMES:
+                task._unreadable_hand_frames = 0
+                task.log_info(f"手牌数为{hand_count}却认不出手牌，可能有卡牌停在选目标状态，按Enter确认")
+                task.send_key("enter")
+                task.sleep(2)
+                return True
         finishturn_box = task.box_of_screen(0.844, 0.782, 0.998, 0.990)
         if task.find_feature(feature_name="finishturn", box=finishturn_box):
             task.log_info("检测到finishturn特征，按E结束回合")
@@ -532,6 +543,9 @@ def handle_battle_page(task: TriggerTask):
             task.sleep(1)
         return True
     return True
+
+
+_UNREADABLE_HAND_FRAMES = 2  # 手牌数不是 0 却连续几次认不出手牌，就按 Enter 确认停在选目标状态的卡牌
 
 
 _GET_CARD_MAX_MISSES = 5  # 获得卡牌页连续几次认不出卡牌就点跳过
