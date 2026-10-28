@@ -54,5 +54,45 @@ class TestRunHistory(unittest.TestCase):
         self.assertTrue(task.logs and "记录历程失败" in task.logs[0])
 
 
+class TestRunProgress(unittest.TestCase):
+    """本局進度存檔：ok-kes／遊戲重啟後接回同一局（層數、刷到琶音沒有、命運）；別的模式、太舊、局結束都不還原。"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        patcher = patch.object(utils, "RUN_PROGRESS_FILE", os.path.join(self.tmp, "logs", "run_progress.json"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def task(self, **status):
+        t = SimpleNamespace(node_status=dict(utils._initial_node_status(), **status), logs=[])
+        t.log_info = t.logs.append
+        return t
+
+    def test_restore_after_restart(self):
+        before = self.task(pass_final_boss_count=1, get_specific_flash=True, node_count=4)
+        before._run_fates = [{"floor": 1, "name": "轻盈身法"}]
+        utils.save_run_progress(before)
+        after = self.task()
+        self.assertTrue(utils.restore_run_progress(after))
+        self.assertEqual((after.node_status["pass_final_boss_count"], after.node_status["get_specific_flash"],
+                          after.node_status["node_count"]), (1, True, 4))
+        self.assertEqual(after._run_fates[0]["name"], "轻盈身法")
+
+    def test_not_restored_for_other_mode_old_or_finished(self):
+        utils.save_run_progress(self.task(pass_final_boss_count=2))
+        other = SimpleNamespace(**vars(self.task()))  # 類別名稱同為 SimpleNamespace：用 mode 欄位改掉來模擬別的模式
+        with open(utils.RUN_PROGRESS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        with open(utils.RUN_PROGRESS_FILE, "w", encoding="utf-8") as f:
+            json.dump(dict(data, mode="ChaosMode"), f)
+        self.assertFalse(utils.restore_run_progress(other))
+        with open(utils.RUN_PROGRESS_FILE, "w", encoding="utf-8") as f:
+            json.dump(dict(data, saved_at=data["saved_at"] - utils.RUN_PROGRESS_MAX_AGE - 1), f)
+        self.assertFalse(utils.restore_run_progress(self.task()))
+        utils.clear_run_progress(self.task())
+        self.assertFalse(utils.restore_run_progress(self.task()))
+
+
 if __name__ == "__main__":
     unittest.main()

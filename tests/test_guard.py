@@ -274,6 +274,7 @@ class TestWatch(GuardTestCase):
         self.assertEqual(len(set(self.task._guard_state.clicks)), 1)
 
     def test_loop_goes_home_then_stops(self):
+        guard.GUARD.restart_limit = 0  # 不重啟遊戲：回首頁救不回就停止
         enter, cancel = (lambda t: t.click(0.719, 0.914)), (lambda t: t.click(0.347, 0.803))
         for action in [enter, enter, cancel] * 5:
             self.tick(action)
@@ -304,7 +305,23 @@ class TestWatch(GuardTestCase):
             self.tick(observe)
         self.assertEqual(self.homes(), [])
 
+    def test_no_progress_restarts_game_before_stopping(self):
+        """參考 ALAS：回首頁也救不回時重啟遊戲（強制關閉 → 開啟 → 點繼續進行），重啟太多次才停止任務。"""
+        restarts = []
+        original = guard.restart_game
+        guard.restart_game = lambda task: restarts.append(self.now) or True
+        self.addCleanup(setattr, guard, 'restart_game', original)
+        guard.GUARD.restart_limit = 2
+        for _ in range(91 + 90 * 6):
+            self.tick()
+            if not self.task.enabled:
+                break
+        self.assertEqual(len(restarts), 2)  # 第二次起每次救不回就重啟遊戲
+        self.assertEqual(self.task.calls[-1], ('disable',))
+        self.assertTrue(any('重啟遊戲 2 次仍無法恢復' in c[1] for c in self.task.kinds('info')))
+
     def test_no_progress_goes_home_then_stops(self):
+        guard.GUARD.restart_limit = 0
         for _ in range(90):  # 第一輪開始計時，第 90 輪時才過了 89 秒
             self.tick()
         self.assertEqual(self.homes(), [])

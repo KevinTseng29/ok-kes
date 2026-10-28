@@ -2136,6 +2136,7 @@ def log_node_status(task: TriggerTask):
     """记录当前胜率（仅记录, 不拦截后续处理）。"""
     ns = getattr(task, 'node_status', None)
     if ns:
+        save_run_progress(task)
         try:
             from src.config import version
             app_version = str(version).strip() or "dev"
@@ -2306,6 +2307,59 @@ def _journal(task: TriggerTask, kind, detail):
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:
         task.log_info(f"记录历程失败：{e}")
+
+
+RUN_PROGRESS_FILE = os.path.join("logs", "run_progress.json")
+RUN_PROGRESS_MAX_AGE = 30 * 60  # 超过这么久没更新的存档当成别局的，不还原
+_RUN_PROGRESS_KEYS = ("pass_final_boss_count", "get_specific_flash", "node_count", "removed_card_count",
+                   "neutral_card_count")
+
+
+def save_run_progress(task: TriggerTask):
+    """这局要跨 ok-kes／游戏重启保留的进度（打过几层、是否刷到指定闪光、历程 run、命运、装备），有变化才写档。
+    重启后 enable() 会读回来；不然层数从第 1 层重算，刷到琶音的局打完那层会被当成第一层没刷到而撤退。"""
+    try:
+        status = getattr(task, "node_status", None) or {}
+        state = {"mode": type(task).__name__, "status": {key: status.get(key) for key in _RUN_PROGRESS_KEYS},
+                 "run_id": getattr(task, "_run_id", None), "fates": getattr(task, "_run_fates", []),
+                 "equipment": getattr(task, "_run_equipment", [])}
+        snapshot = json.dumps(state, ensure_ascii=False, sort_keys=True)
+        if snapshot == getattr(task, "_saved_run_progress", None):
+            return
+        task._saved_run_progress = snapshot
+        os.makedirs(os.path.dirname(RUN_PROGRESS_FILE), exist_ok=True)
+        with open(RUN_PROGRESS_FILE, "w", encoding="utf-8") as f:
+            json.dump(dict(state, saved_at=time.time()), f, ensure_ascii=False)
+    except Exception as e:
+        task.log_info(f"保存本局进度失败：{e}")
+
+
+def restore_run_progress(task: TriggerTask):
+    """任务开启时读回同一模式、RUN_PROGRESS_MAX_AGE 内存的进度；回传是否有还原。"""
+    try:
+        with open(RUN_PROGRESS_FILE, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if state.get("mode") != type(task).__name__ or time.time() - state.get("saved_at", 0) > RUN_PROGRESS_MAX_AGE:
+        return False
+    status = getattr(task, "node_status", None)
+    if status is not None:
+        status.update({key: value for key, value in (state.get("status") or {}).items() if value is not None})
+    task._run_id = state.get("run_id")
+    task._run_fates = list(state.get("fates") or [])
+    task._run_equipment = list(state.get("equipment") or [])
+    task.log_info(f"还原本局进度：{state.get('status')}，命运 {len(task._run_fates)} 个、装备 {len(task._run_equipment)} 件")
+    return True
+
+
+def clear_run_progress(task: TriggerTask):
+    """这局结束（探险结果）就删掉进度存档。"""
+    task._saved_run_progress = None
+    try:
+        os.remove(RUN_PROGRESS_FILE)
+    except OSError:
+        pass
 
 
 def _note_equipment(task: TriggerTask, name, slot):
@@ -5265,6 +5319,7 @@ def _record_round(task: TriggerTask, succeeded):
                          floors=status.get("pass_final_boss_count", 0),
                          equipment=getattr(task, "_run_equipment", []))
         _journal(task, "结果", "成功" if succeeded else "失败")
+        clear_run_progress(task)
     except Exception as e:
         task.log_info(f"记录战绩失败：{e}")
 
@@ -5375,6 +5430,7 @@ def reset_all_status(task: TriggerTask):
     """重置所有状态：恢复节点状态和目标主战员状态。"""
     if getattr(task, 'node_status', None) is not None:
         task.node_status = _initial_node_status()
+        restore_run_progress(task)  # 重启后接回同一局
     task.member_status = _initial_member_status()
     task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)

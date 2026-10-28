@@ -80,6 +80,10 @@ class GuardSettings:
     # 打轉或卡住時先按回首頁；之後這麼多秒內又發生就停止任務
     recover_window: float = 600
     home_button: tuple = (0.898, 0.050)
+    # 回首頁也救不回時重啟遊戲（參考 ALAS：強制關閉 → 開啟 → 點開始／繼續進行）；這段時間內重啟太多次才停止任務
+    restart_limit: int = 3
+    restart_window: float = 1800
+    login_timeout: float = 180
     # 事件選項繞圈：同一組選項在這麼多秒內又出現，上次選的就當成會繞回原處
     event_loop_window: float = 180
 
@@ -289,7 +293,15 @@ def _recover(task, reason, detail):
     state.last_progress, state.progress_texts = now, _text_set(task)
     if state.last_recover is not None and now - state.last_recover < GUARD.recover_window:
         state.last_recover = None
-        _notify(task, f'{detail}；回首頁後仍無法恢復，停止任務，請查看 {GUARD.scene_dir}/ 的現場')
+        restarts = getattr(state, 'restarts', [])
+        state.restarts = [t for t in restarts if now - t < GUARD.restart_window]
+        if len(state.restarts) < GUARD.restart_limit:
+            state.restarts.append(now)
+            _notify(task, f'{detail}；回首頁後仍無法恢復，重啟遊戲（{GUARD.restart_window / 60:g} 分鐘內第 {len(state.restarts)} 次）')
+            restart_game(task)
+            state.last_progress, state.progress_texts = time.time(), _text_set(task)
+            return True
+        _notify(task, f'{detail}；重啟遊戲 {GUARD.restart_limit} 次仍無法恢復，停止任務，請查看 {GUARD.scene_dir}/ 的現場')
         task.disable()
         return True
     state.last_recover = now
@@ -301,6 +313,57 @@ def _recover(task, reason, detail):
         state.paused = False
     task.sleep(2)
     return True
+
+
+GAME_PACKAGE = 'com.smilegate.chaoszero.stove.google'
+
+
+def _ocr_names(task):
+    try:
+        task.next_frame()
+        from utils import _simplify_texts
+        return [box for box in _simplify_texts(task.ocr())]
+    except Exception as e:
+        task.log_info(f'重啟遊戲：讀畫面失敗：{e}')
+        return []
+
+
+def restart_game(task):
+    """強制關閉遊戲再開啟，點「TOUCH TO START」直到出現「有進行中的出擊資訊，是否要繼續進行」按「繼續進行」，
+    或畫面已沒有開始字樣（回到大廳）。任務的局內狀態留在記憶體裡，重啟後接著跑。回傳是否看到可以繼續的畫面。"""
+    from ok import og
+    state = _state(task)
+    state.paused = True
+    try:
+        device = og.device_manager
+        task.log_info('重啟遊戲：強制關閉')
+        device.shell(f'am force-stop {GAME_PACKAGE}')
+        task.sleep(3)
+        device.adb_start_package(GAME_PACKAGE)
+        task.log_info('重啟遊戲：已開啟，等待登入')
+        deadline = time.time() + GUARD.login_timeout
+        started = None
+        while time.time() < deadline:
+            task.sleep(3)
+            boxes = _ocr_names(task)
+            names = ' '.join(box.name for box in boxes)
+            resume = next((box for box in boxes if '继续进行' in box.name), None)
+            if resume is not None:
+                task.log_info('重啟遊戲：有進行中的出擊，點「繼續進行」')
+                task.click_box(resume)
+                task.sleep(5)
+                return True
+            if 'TOUCH' in names.upper() or 'START' in names.upper():
+                task.log_info('重啟遊戲：標題畫面，點擊開始')
+                task.click(0.5, 0.6)
+                started = time.time()
+            elif started is not None and time.time() - started > 20:
+                task.log_info('重啟遊戲：已過標題畫面，交回任務處理')
+                return True
+        task.log_info(f'重啟遊戲：{GUARD.login_timeout:g} 秒內沒等到可以繼續的畫面')
+        return False
+    finally:
+        state.paused = False
 
 
 def _handle_failure(task, error):
