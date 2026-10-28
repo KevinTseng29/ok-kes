@@ -631,7 +631,14 @@ def handle_sortie_reward_settlement(task: TriggerTask):
         task.sleep(1)
         return True
     task.log_info("检测到出击模式奖励结算页面，关闭页面")
-    return _finish_only_first_layer(task) if not task.node_status.get('is_escaped', False) else False
+    if task.node_status.get('is_escaped', False):
+        return False
+    if task.node_status.get('pass_final_boss_count', 0) < 1:
+        # 这一页只在打完一层的最终 boss 后出现；中途重启 ok-kes 时「到达最终 boss」的记录会丢，
+        # 通关层数没加上去，只打第一层就会失效、直接继续打下一层
+        task.node_status['pass_final_boss_count'] = 1
+        task.log_info("结算页面表示已打完这一层，但没有记到通关（可能中途重启），通关层数记为 1")
+    return _finish_only_first_layer(task)
 
 
 def handle_sortie_reward_claim(task: TriggerTask):
