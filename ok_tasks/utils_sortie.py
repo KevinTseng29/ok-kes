@@ -102,6 +102,35 @@ def _hand_card_names(task: TriggerTask):
     return result
 
 
+def _card_cost(task: TriggerTask, name_box):
+    """卡名左边同一排的数字就是这张牌的费用（例如「2 管白流星」）；认不到回传 None。"""
+    name_left = name_box.x / task.width
+    name_cy = (name_box.y + name_box.height / 2) / task.height
+    best = None
+    for b in task.all_texts:
+        text = b.name.strip()
+        if not (text.isdigit() and len(text) <= 2):
+            continue
+        cx = (b.x + b.width / 2) / task.width
+        cy = (b.y + b.height / 2) / task.height
+        if abs(cy - name_cy) <= 0.025 and name_left - 0.05 <= cx <= name_left + 0.005:
+            if best is None or cx > best[0]:
+                best = (cx, int(text))
+    return best[1] if best else None
+
+
+def _read_ap(task: TriggerTask):
+    """画面下方中间的大数字是目前的 AP（费用）；认不到回传 None。"""
+    box = find_box_at_point(task, 0.499, 0.928)
+    text = box.name.strip() if box else ""
+    return int(text) if text.isdigit() and len(text) <= 2 else None
+
+
+def _affordable(card, ap):
+    """费用和 AP 都认得到时才判断；有一边认不到就当成打得起（交给游戏判断）。"""
+    return ap is None or card.get("cost") is None or card["cost"] <= ap
+
+
 def _hand_cards(task: TriggerTask):
     """识别手牌，返回按位置排序的卡牌名与按键列表，按键缺失时根据手牌数和间距推断。"""
     # 按键：包含数字的
@@ -138,9 +167,11 @@ def _hand_cards(task: TriggerTask):
         if candidates:
             best = min(candidates, key=lambda x: cx - x[0])
             used_keys.add(best[2])
-            cards.append({"name": name_box.name, "key": best[2], "x": cx, "left_x": left_x})
+            cards.append({"name": name_box.name, "key": best[2], "x": cx, "left_x": left_x,
+                          "cost": _card_cost(task, name_box)})
         else:
-            cards.append({"name": name_box.name, "key": None, "x": cx, "left_x": left_x})
+            cards.append({"name": name_box.name, "key": None, "x": cx, "left_x": left_x,
+                          "cost": _card_cost(task, name_box)})
 
     # 推断缺失的按键：用最小相邻间距作为 expected_spacing 进行插值
     # 以最近的前一张已有按键的卡牌为基准推算，避免累积误差
@@ -205,6 +236,7 @@ def _play_next_fallback_key(task: TriggerTask, count, signature):
 
 def _end_turn(task: TriggerTask, reason):
     task._fallback_keys = None
+    task._arpeggio_played = set()
     task._last_attempted_card = None
     task._play_stuck_count = 0
     task.log_info(f"{reason}，按E结束回合")
@@ -529,7 +561,8 @@ def handle_battle_page(task: TriggerTask):
 
     card_names = _hand_card_names(task)
     cards = _hand_cards(task)
-    observed = (hand_count, tuple(sorted(c["name"] for c in cards)),
+    ap = _read_ap(task)
+    observed = (hand_count, ap, tuple(sorted(c["name"] for c in cards)),
                 tuple(sorted(getattr(b, "name", str(b)) for b in card_names)))
     if getattr(task, "_battle_last_observed", None) != observed:
         # 抽牌、出牌动画还在播时不动作，等下一帧手牌一样再出牌（连续塞按键可能让游戏卡死）
@@ -557,7 +590,8 @@ def handle_battle_page(task: TriggerTask):
             for pri_name in play_priority:
                 # 同一个关键字命中好几张时先出编号小的：琶音照（0）→（5）的顺序打，后面的费用才会降到 0
                 matched = min((c for c in cards if pri_name and (pri_name in c["name"] or c["name"] in pri_name)
-                               and c["key"] is not None), key=_card_sequence_number, default=None)
+                               and c["key"] is not None and _affordable(c, ap)),
+                              key=_card_sequence_number, default=None)
                 if matched:
                     # 检测当前匹配到的卡牌是否与上次尝试打出的是同一张且仍在手牌中
                     if task._last_attempted_card == matched["name"]:
@@ -576,7 +610,10 @@ def handle_battle_page(task: TriggerTask):
                         task._last_attempted_card = matched["name"]
                         task._play_stuck_count = 0
 
-                    task.log_info(f"出牌优先级匹配: 卡牌「{matched['name']}」→ 按键 {matched['key']}")
+                    task.log_info(f"出牌优先级匹配: 卡牌「{matched['name']}」(费用{matched.get('cost')}，AP{ap})"
+                                  f"→ 按键 {matched['key']}")
+                    if "琶音" in matched["name"] and _card_sequence_number(matched) < 99:
+                        task.__dict__.setdefault("_arpeggio_played", set()).add(_card_sequence_number(matched))
                     task.send_key(matched['key'])
                     task.sleep(1)
                     task.send_key("enter")
@@ -593,6 +630,9 @@ def handle_battle_page(task: TriggerTask):
         task._last_attempted_card = None
         task._play_stuck_count = 0
         # 兜底从大到小出牌
+        if ap is not None and cards and all(c.get("cost") is not None for c in cards) \
+                and not any(_affordable(c, ap) for c in cards):
+            return _end_turn(task, f"AP{ap}，手牌费用{[c['cost'] for c in cards]}都打不起")
         if getattr(task, "_fallback_keys", None) is None:
             task.log_info(f"未命中出牌优先级，按当前手牌数{hand_count}从大到小兜底出牌（一次一张）")
         if not _play_next_fallback_key(task, hand_count, hand_signature):
@@ -613,12 +653,14 @@ def handle_battle_page(task: TriggerTask):
                 task.send_key("enter")
                 task.sleep(2)
                 return True
-            if _play_next_fallback_key(task, hand_count, ("认不出手牌", hand_count)):
-                return True  # 认不出手牌：一帧按一张，每张都试过才按 E
+            # 打得起的牌会亮起来、往上浮；打不起的变暗往下沉，卡名掉出辨识区。
+            # 手牌区一张都认不到多半就是整手都打不起（AP 不够）：直接结束回合，不再一张张试（一直跳 AP 不足）
             task._unreadable_hand_frames = 0
+            return _end_turn(task, f"手牌数为{hand_count}但没有亮起来的牌（AP{ap}，都打不起）")
         finishturn_box = task.box_of_screen(0.844, 0.782, 0.998, 0.990)
         if task.find_feature(feature_name="finishturn", box=finishturn_box):
             task.log_info("检测到finishturn特征，按E结束回合")
+            task._arpeggio_played = set()
             task.send_key("e")
             task.sleep(1)
         return True
@@ -994,7 +1036,9 @@ def handle_draw_card_select(task: TriggerTask):
     for name in priority:
         if not name:
             continue
-        hits = sorted((card for card in cards if name in card["name"] and card not in chosen),
+        played = getattr(task, "_arpeggio_played", set())
+        hits = sorted((card for card in cards if name in card["name"] and card not in chosen
+                       and not ("琶音" in card["name"] and _card_sequence_number(card) in played)),
                       key=_card_sequence_number)
         chosen.extend(hits[:limit - len(chosen)])
         if len(chosen) >= limit:

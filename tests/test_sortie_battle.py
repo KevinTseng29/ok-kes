@@ -18,7 +18,7 @@ def battle_task():
     import numpy as np
     keys = []
     t = SimpleNamespace(width=1280, height=720, frame=np.zeros((720, 1280, 3), np.uint8), node_status={}, logs=[],
-                        keys=keys, config={})
+                        keys=keys, config={}, all_texts=[])
     t.log_info = lambda message, notify=False: t.logs.append(message)
     t.sleep = lambda seconds: None
     t.send_key = keys.append
@@ -52,12 +52,10 @@ class TestWaitForStableHand(unittest.TestCase):
 class TestUnreadableHand(unittest.TestCase):
     """手牌數不是 0 卻一張都認不出：等 → Enter（卡牌停在選目標狀態）→ 一幀按一張 → 都試過才按 E。"""
 
-    def test_escalates_one_key_per_frame(self):
+    def test_unreadable_means_nothing_playable(self):
+        """打不起的牌會變暗往下沉、卡名掉出辨識區：先按一次 Enter（可能有牌停在選目標），再認不到就結束回合，不再一張張試。"""
         t = battle_task()
-        keys = run_battle(t, 12, [[]], hand_count=2)
-        self.assertEqual(keys[:5], ["enter", "2", "enter", "1", "enter"])
-        self.assertIn("e", keys)
-        self.assertLess(keys.index("e"), len(keys))
+        self.assertEqual(run_battle(t, 4, [[]], hand_count=2), ["enter", "e"])
 
     def test_empty_hand_just_ends_turn(self):
         t = battle_task()
@@ -84,6 +82,38 @@ class TestArpeggioOrder(unittest.TestCase):
         hand = [{"name": "节奏：琶音（3)", "key": "1"}, {"name": "琶音（0)", "key": "2"},
                 {"name": "节奏：琶音(2)", "key": "3"}, {"name": "节奏", "key": "4"}]
         self.assertEqual(run_battle(t, 2, [hand]), ["2", "enter"])
+
+
+class TestApAware(unittest.TestCase):
+    """讀 AP 和卡名左邊的費用：只出打得起的；費用都認得到又都打不起就直接結束回合（把費用花光）。"""
+
+    def boxes(self, ap, costs):
+        def text(name, x, y, w, h):
+            return SimpleNamespace(name=name, x=x, y=y, width=w, height=h, area=lambda: w * h)
+        texts = [text(str(ap), 0.499 * 1280 - 10, 0.928 * 720 - 15, 20, 30)]
+        for i, cost in enumerate(costs):
+            texts.append(text(str(cost), (0.30 + 0.15 * i) * 1280 - 25, 0.75 * 720, 10, 20))
+        return texts
+
+    def hand(self, names):
+        return [{"name": name, "key": str(i + 1), "x": 0.30 + 0.15 * i, "left_x": 0.30 + 0.15 * i}
+                for i, name in enumerate(names)]
+
+    def test_card_cost_and_ap(self):
+        t = battle_task()
+        t.all_texts = self.boxes(1, [2])
+        name = SimpleNamespace(name="聚光灯", x=0.30 * 1280, y=0.75 * 720, width=60, height=20, area=lambda: 1200)
+        self.assertEqual(utils_sortie._card_cost(t, name), 2)
+        self.assertEqual(utils_sortie._read_ap(t), 1)
+
+    def test_skips_unaffordable_priority_and_ends_turn(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["聚光灯", "小丑"]}
+        hand = [dict(c, cost=cost) for c, cost in zip(self.hand(["聚光灯", "小丑"]), (2, 1))]
+        t.all_texts = self.boxes(1, [2, 1])
+        self.assertEqual(run_battle(t, 2, [hand]), ["2", "enter"])  # 聚光燈 2 費打不起，出 1 費的小丑
+        t.all_texts = self.boxes(0, [2])
+        self.assertEqual(run_battle(t, 2, [[hand[0]]])[-1], "e")  # AP 0、剩 2 費：結束回合
 
 
 class TestEndTurnWhenNothingPlayable(unittest.TestCase):
