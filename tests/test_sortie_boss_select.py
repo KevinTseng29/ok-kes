@@ -90,6 +90,23 @@ class TestDrawCardSelect(unittest.TestCase):
         self.assertTrue(handled)
         click.assert_called_once()
 
+    def test_search_picks_up_to_limit_then_confirms(self):
+        """聚光燈檢索「最多選擇2張」：照優先級挑滿 2 張（琶音編號小的先），下一幀才按「選擇」確認，不會空選就確認。"""
+        cards = [{"name": "节奏：琶音（3）", "x": 0.2, "y": 0.3}, {"name": "节奏：琶音（1）", "x": 0.4, "y": 0.3},
+                 {"name": "节奏", "x": 0.6, "y": 0.3}, {"name": "节奏：琶音（0)", "x": 0.8, "y": 0.3}]
+        confirm = box("选择", 0.945, 0.918)
+        t = SimpleNamespace(width=1280, height=720, logs=[], config={"出牌优先级": ["琶音", "节奏"]}, clicked=[],
+                            all_texts=[box("请选择最多2张欲移动至手牌的节奏卡牌。", 0.5, 0.131, w=0.4), confirm])
+        t.log_info = lambda message, notify=False: t.logs.append(message)
+        t.sleep = lambda seconds: None
+        t.click_box = t.clicked.append
+        with patch.object(utils_sortie, "recognize_cards", return_value=cards),                 patch.object(utils_sortie, "_journal"),                 patch.object(utils_sortie, "_move_and_click") as click:
+            self.assertTrue(utils_sortie.handle_draw_card_select(t))
+            self.assertEqual([c.args[1] for c in click.call_args_list], [0.8, 0.4])  # （0）、（1）
+            self.assertEqual(t.clicked, [])
+            self.assertTrue(utils_sortie.handle_draw_card_select(t))  # 下一幀：確認
+        self.assertEqual(t.clicked, [confirm])
+
     def test_other_prompt(self):
         self.assertFalse(self.run_page("请选择功能", [{"name": "节奏", "x": 0.2, "y": 0.3}], [])[0])
 

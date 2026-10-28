@@ -32,6 +32,7 @@ from navigation import handle_sortie_navigation
 from dialogue import mark_battle
 
 import re
+import time
 import random
 import cv2
 
@@ -961,24 +962,53 @@ def handle_extra_card_use(task: TriggerTask):
     return False
 
 
+_SEARCH_TITLE = re.compile(r"请选择.*?(\d+)张.*?卡牌")
+_SEARCH_CONFIRM_DELAY = 8  # 选完卡后这么久内同一页还在，就按「选择」确认（不再重选，避免把选好的卡点掉）
+
+
 def handle_draw_card_select(task: TriggerTask):
-    """战斗中「请选择1张欲抽取的卡牌」：按出牌优先级挑要抽的牌，都没命中就随机。
-    原本没有处理函数，每次都要等卡住兜底（10 秒）才随机点一张。"""
+    """战斗中检索／抽取选卡（「请选择1张欲抽取的卡牌」、聚光灯「最多选择2张……」之类）：
+    按「检索优先级」（没设就用出牌优先级）挑卡，同一关键字命中好几张先选编号小的（琶音 0→5），
+    「最多 N 张」就挑满 N 张，都没命中就随便挑；选完下一帧再按右下「选择」确认。
+    原本通用的「选择」按钮处理排在前面，检索页一张都没选就被确认掉（2026-10-29 00:50 聚光灯）。"""
     title = find_box_at_point(task, 0.499, 0.131)
-    if not (title and re.search(r"请选择\d*张?.*抽取的卡牌", title.name)):
+    match = _SEARCH_TITLE.search(title.name) if title else None
+    if not match:
         return False
-    cards = recognize_cards(task, page="抽取卡牌页面")
+    done = getattr(task, "_search_page_done", None)
+    if done and done[0] == title.name and time.time() - done[1] < _SEARCH_CONFIRM_DELAY:
+        confirm = find_box_at_point(task, 0.945, 0.918)
+        if confirm and "选择" in confirm.name:
+            task.log_info("检索选卡：已选好，点击「选择」确认")
+            task.click_box(confirm)
+            task.sleep(1.5)
+            task._search_page_done = None
+            return True
+        return False  # 没有确认按钮（选一张就自动结束的页面）：交给其他处理
+    cards = recognize_cards(task, page="检索选卡页面")
     if not cards:
         return False
-    priority = _get_config_value(task, "出牌优先级", [])
-    chosen = next((card for name in priority if name for card in cards if name in card["name"]), None)
-    if chosen:
-        task.log_info(f"抽取卡牌: 按出牌优先级选择「{chosen['name']}」")
+    limit = max(1, int(match.group(1)))
+    priority = _get_card_list(task, "检索优先级") or _get_config_value(task, "出牌优先级", [])
+    chosen = []
+    for name in priority:
+        if not name:
+            continue
+        hits = sorted((card for card in cards if name in card["name"] and card not in chosen),
+                      key=_card_sequence_number)
+        chosen.extend(hits[:limit - len(chosen)])
+        if len(chosen) >= limit:
+            break
+    if not chosen:
+        chosen = random.sample(cards, min(limit, len(cards)))
+        task.log_info(f"检索选卡「{title.name}」：未命中优先级，随便选 {[c['name'] for c in chosen]}")
     else:
-        chosen = random.choice(cards)
-        task.log_info(f"抽取卡牌: 未命中出牌优先级，随机选择「{chosen['name']}」")
-    _move_and_click(task, chosen["x"], chosen["y"])
-    task.sleep(1.5)
+        task.log_info(f"检索选卡「{title.name}」：按优先级选 {[c['name'] for c in chosen]}")
+    _journal(task, "检索", f"{title.name}：{'、'.join(c['name'] for c in chosen)}")
+    for card in chosen:
+        _move_and_click(task, card["x"], card["y"])
+        task.sleep(0.8)
+    task._search_page_done = (title.name, time.time())
     return True
 
 
@@ -1156,6 +1186,7 @@ PAGE_HANDLERS = [
     handle_leave, #离开按钮
     handle_expedition_result, #探险结果页面，优先级高于下一步
     handle_next_step, #下一步按钮
+    handle_draw_card_select, #战斗中检索／抽取选卡（要排在通用「选择」按钮前面）
     handle_select, #选择按钮
 
     handle_equipment_recast, #装备重铸按钮
@@ -1167,7 +1198,6 @@ PAGE_HANDLERS = [
     handle_curiosity_activate,
     handle_extra_card_use,
     handle_card_function_select,
-    handle_draw_card_select, #战斗中「请选择1张欲抽取的卡牌」
     handle_return_to_draw_pile,
     handle_weakness_info,
     handle_battle_page,
