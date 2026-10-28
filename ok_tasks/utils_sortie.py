@@ -65,6 +65,12 @@ def _card_key(text):
     return m.group(0) if m else None
 
 
+def _is_key_text(text):
+    """按键提示文字（「1」「②」之类，只有一个数字加一点符号）；「节奏：琶音（1）」这种卡名里的编号不算。"""
+    stripped = text.strip()
+    return bool(_card_key(stripped)) and len(stripped) <= 3 and not re.search(r"[一-鿿]", stripped)
+
+
 def _is_card_name(name):
     """判断文本是否为卡牌名：排除类型标签。"""
     exclude_keywords = {"攻击", "强化", "技能", "咒术", "基础", "基本", "状态异常", "诅咒"}
@@ -95,7 +101,7 @@ def _hand_card_names(task: TriggerTask):
              if x1 <= (b.x + b.width / 2) / task.width <= x2
              and y1 <= (b.y + b.height / 2) / task.height <= y2]
     result = [b for b in boxes
-              if not _card_key(b.name)
+              if not _is_key_text(b.name)
               and len(b.name.strip()) > 1
               and _is_card_name(b.name)]
     task.log_info(f"_hand_card_names 区域共{len(boxes)}个文本，过滤后剩{len(result)}个: {[b.name for b in result]}")
@@ -155,7 +161,7 @@ def _affordable(card, ap):
 def _hand_cards(task: TriggerTask):
     """识别手牌，返回按位置排序的卡牌名与按键列表，按键缺失时根据手牌数和间距推断。"""
     # 按键：包含数字的
-    keys = [(b.x / task.width, b.y / task.height, _card_key(b.name)) for b in task.all_texts if _card_key(b.name)]
+    keys = [(b.x / task.width, b.y / task.height, _card_key(b.name)) for b in task.all_texts if _is_key_text(b.name)]
     keys.sort(key=lambda x: x[0])
 
     # 卡牌名
@@ -258,6 +264,7 @@ def _play_next_fallback_key(task: TriggerTask, count, signature):
 def _end_turn(task: TriggerTask, reason):
     task._fallback_keys = None
     task._arpeggio_played = set()
+    task._arpeggio_in_hand = None
     task._last_attempted_card = None
     task._play_stuck_count = 0
     task.log_info(f"{reason}，按E结束回合")
@@ -605,6 +612,15 @@ def handle_battle_page(task: TriggerTask):
         if not hasattr(task, '_last_attempted_card'):
             task._last_attempted_card = None
 
+        # 琶音2 之类打出去常会连带自动打出其他琶音：手上的琶音消失、手牌数也跟着少了，就当成这回合打过了
+        # （只认得手上的；从抽牌堆自动打出的看不到）。卡变暗下沉也会让名称认不到，所以要手牌数真的变少才算
+        arpeggios_now = {_card_sequence_number(c) for c in cards if "琶音" in c["name"] and _card_sequence_number(c) < 99}
+        last_seen = getattr(task, "_arpeggio_in_hand", None)
+        if last_seen and last_seen[1] - hand_count >= len(last_seen[0] - arpeggios_now) > 0:
+            gone = last_seen[0] - arpeggios_now
+            task.__dict__.setdefault("_arpeggio_played", set()).update(gone)
+            task.log_info(f"琶音{sorted(gone)}从手上打出去了（含连带自动打出），这回合已打 {sorted(task._arpeggio_played)}")
+        task._arpeggio_in_hand = (arpeggios_now, hand_count)
         # 琶音要照 0→5 打（前面的打过后面的才会降费）。手上最小的琶音比下一个该打的编号大（例如只有琶音5、0～4 都没打），
         # 又有检索牌（聚光灯）打得起，就先打检索牌把前面的琶音拿上来，不先打琶音5
         played = getattr(task, "_arpeggio_played", set())
@@ -698,6 +714,7 @@ def handle_battle_page(task: TriggerTask):
         if task.find_feature(feature_name="finishturn", box=finishturn_box):
             task.log_info("检测到finishturn特征，按E结束回合")
             task._arpeggio_played = set()
+            task._arpeggio_in_hand = None
             task.send_key("e")
             task.sleep(1)
         return True

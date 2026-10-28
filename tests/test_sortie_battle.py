@@ -116,6 +116,33 @@ class TestApAware(unittest.TestCase):
         self.assertEqual(run_battle(t, 2, [[hand[0]]])[-1], "e")  # AP 0、剩 2 費：結束回合
 
 
+class TestHandNamesWithNumbers(unittest.TestCase):
+    """卡名裡有編號（節奏：琶音（1））不能被當成按鍵提示濾掉，不然琶音永遠認不到。"""
+
+    def test_arpeggio_name_kept(self):
+        self.assertTrue(utils_sortie._is_key_text("1"))
+        self.assertTrue(utils_sortie._is_key_text("②"))
+        self.assertFalse(utils_sortie._is_key_text("节奏：琶音（1)"))
+        self.assertFalse(utils_sortie._is_key_text("琶音（0)"))
+        t = battle_task()
+        t.all_texts = [SimpleNamespace(name="节奏：琶音（1)", x=0.70 * 1280, y=0.76 * 720, width=90, height=20),
+                       SimpleNamespace(name="2", x=0.69 * 1280, y=0.72 * 720, width=10, height=20)]
+        self.assertEqual([b.name for b in utils_sortie._hand_card_names(t)], ["节奏：琶音（1)"])
+
+
+class TestChainedArpeggio(unittest.TestCase):
+    """打出琶音2 連帶自動打出手上的琶音3、4：手上的琶音消失、手牌數也變少，就記成這回合打過。"""
+
+    def test_auto_played_recorded(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["琶音"]}
+        before = [{"name": f"节奏：琶音（{n}）", "key": str(i + 1)} for i, n in enumerate((2, 3, 4))]
+        after = [{"name": "小丑", "key": "1"}]
+        run_battle(t, 2, [before])
+        run_battle(t, 2, [after], hand_count=0)  # 三張琶音都離手（手牌數 3 → 0）
+        self.assertEqual(t._arpeggio_played, {2, 3, 4})
+
+
 class TestArpeggioSearchFirst(unittest.TestCase):
     """手上只有琶音5、0～4 都還沒打：先打聚光燈把前面的琶音檢索上來，不先打琶音5。"""
 
