@@ -2280,6 +2280,17 @@ def handle_skip(task: TriggerTask):
     return False
 
 
+def _note_fate(task: TriggerTask, name):
+    """记下这局在第几层选了哪个命运，探险结果时连同胜负存进战绩（统计各命运的胜率）。
+    同一层 10 秒内又选（确认前页面又处理了一次）就当成改选，取代上一笔。"""
+    floor = (getattr(task, "node_status", None) or {}).get("pass_final_boss_count", 0) + 1
+    fates = task.__dict__.setdefault("_run_fates", [])
+    now = time.time()
+    if fates and fates[-1]["floor"] == floor and now - fates[-1]["time"] < 10:
+        fates.pop()
+    fates.append({"floor": floor, "name": name.strip(), "time": now})
+
+
 def handle_destiny_choice(task: TriggerTask):
     """命运选择奖励页面: 随机选择一个命运标题。"""
     box = find_box_at_point(task, 0.499, 0.932)
@@ -2305,6 +2316,7 @@ def handle_destiny_choice(task: TriggerTask):
         if titles:
             chosen = random.choice(titles)
             task.log_info(f"随机选择命运: {chosen.name}")
+            _note_fate(task, chosen.name)
             task.click_box(chosen)
             task.sleep(1)
             # 选择命运后不点击确认按钮，返回False让其他逻辑处理
@@ -5190,7 +5202,10 @@ def _record_round(task: TriggerTask, succeeded):
     """这一局的结果记进跨重启的战绩（src/run_stats.py，运行总览分页显示）；出错不影响流程。"""
     try:
         from src import run_stats
-        run_stats.record(succeeded, type(task).__name__)
+        status = getattr(task, "node_status", None) or {}
+        fates = [{"floor": f["floor"], "name": f["name"]} for f in getattr(task, "_run_fates", [])]
+        run_stats.record(succeeded, type(task).__name__, fates=fates,
+                         floors=status.get("pass_final_boss_count", 0))
     except Exception as e:
         task.log_info(f"记录战绩失败：{e}")
 
@@ -5328,6 +5343,7 @@ def reset_mission_status(task: TriggerTask):
         task.node_status['success_rounds'] = keep['success_rounds']
         task.node_status['save_target_member'] = keep['save_target_member']
     task.member_status = _initial_member_status()
+    task._run_fates = []  # 这一局选的命运（_note_fate），已随战绩存档
     _clear_run_state(task)  # 这一局结束，存档的主练装备不再适用
     task._target_member_index = None  # 新的一局队伍顺序可能不同，主练位置要重新认
     _reset_meditation_state(task)

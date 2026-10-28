@@ -25,6 +25,7 @@ from src import run_stats
 
 MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieModeExperimental', 'SortieMode', 'StoryMode')
 # 戰績分組：卡厄思（含實驗版）與出擊分開算
+FATE_ROWS = 8  # 总览列出的命运数（选过次数多的在前）
 STAT_GROUPS = (('卡厄思', ('ChaosModeExperimental', 'ChaosMode')), ('出击', ('SortieModeExperimental', 'SortieMode')))
 
 
@@ -207,6 +208,13 @@ class RunOverviewTab(CustomTab):
                 f"{_tr('今日')}：{run_stats.rate_text(*stats['today'])}",
                 f"{_tr('全部')}：{run_stats.rate_text(*stats['total'])}",
             ]
+            fates = run_stats.fate_summary(modes=modes)[:FATE_ROWS]
+            if fates:
+                lines.append(f"<span style='color:gray'>{_tr('命运（选过的局胜率）')}</span>")
+                for item in fates:
+                    floors = '/'.join(f"{floor}{_tr('层')}×{count}" for floor, count in sorted(item['floors'].items()))
+                    lines.append(f"{html.escape(_show(item['name']))}　{floors}　"
+                                 f"{run_stats.rate_text(item['wins'], item['losses'])}")
         if since:
             lines.append(f"<span style='color:gray'>{_tr('自')} {since} {_tr('起')}</span>")
         return '<br>'.join(lines)

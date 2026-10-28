@@ -45,6 +45,21 @@ class TestRunStats(unittest.TestCase):
         self.assertEqual((sortie['today'], sortie['total']), ((2, 0), (2, 0)))
         self.assertEqual(run_stats.summary(self.path, now=now)['total'], (3, 1))  # 不分模式時照舊全部算
 
+    def test_fate_summary(self):
+        """各層選的命運跟著每局戰績存下來：統計被選次數、各層分布、選過的局勝率（同一局選兩次只算一局）。"""
+        run_stats.record(True, 'SortieMode', self.path, fates=[{'floor': 1, 'name': '轻盈身法'},
+                                                              {'floor': 2, 'name': '公平的交易'}], floors=3)
+        run_stats.record(False, 'SortieMode', self.path, fates=[{'floor': 1, 'name': '轻盈身法'},
+                                                               {'floor': 3, 'name': '轻盈身法'}], floors=2)
+        run_stats.record(True, 'ChaosMode', self.path, fates=[{'floor': 1, 'name': '公平的交易'}])
+        run_stats.record(True, 'SortieMode', self.path)  # 舊格式、沒選命運的局
+        fates = run_stats.fate_summary(self.path, modes=('SortieMode',))
+        self.assertEqual([(f['name'], f['picks'], f['floors'], f['wins'], f['losses']) for f in fates],
+                         [('轻盈身法', 3, {1: 2, 3: 1}, 1, 1), ('公平的交易', 1, {2: 1}, 1, 0)])
+        self.assertEqual(run_stats.fate_summary(self.path)[1]['picks'], 2)  # 不分模式
+        with open(self.path, encoding='utf-8') as f:
+            self.assertEqual(json.load(f)['rounds'][0]['floors'], 3)
+
     def test_reset_and_missing_file(self):
         self.assertEqual(run_stats.summary(self.path)['total'], (0, 0))
         run_stats.record(True, path=self.path, now=at('2026-10-28 09:00'))
