@@ -688,7 +688,11 @@ def handle_battle_page(task: TriggerTask):
                               key=_card_sequence_number, default=None)
                 if matched:
                     # 检测当前匹配到的卡牌是否与上次尝试打出的是同一张且仍在手牌中
-                    if task._last_attempted_card == matched["name"]:
+                    # 同名卡有好几张（例如两张聚光灯）：打出一张后手上还有同名的，不能当成没出掉。
+                    # 记下（名称、同名张数、手牌数），同名张数或手牌数有变少就算打出去了
+                    attempt = (matched["name"], sum(c["name"] == matched["name"] for c in cards), hand_count)
+                    last = task._last_attempted_card
+                    if isinstance(last, tuple) and last[0] == attempt[0] and attempt[1] >= last[1]                             and attempt[2] >= last[2]:
                         task._play_stuck_count += 1
                         task.log_info(f"卡牌「{matched['name']}」连续{task._play_stuck_count + 1}次尝试未出掉")
                         if task._play_stuck_count >= _PLAY_STUCK_LIMIT:
@@ -700,8 +704,9 @@ def handle_battle_page(task: TriggerTask):
                             if not _play_next_fallback_key(task, hand_count, hand_signature):
                                 return _end_turn(task, "兜底每张都按过、手牌没变（手上的牌都打不起）")
                             return True
+                        task._last_attempted_card = attempt
                     else:
-                        task._last_attempted_card = matched["name"]
+                        task._last_attempted_card = attempt
                         task._play_stuck_count = 0
 
                     task.log_info(f"出牌优先级匹配: 卡牌「{matched['name']}」(费用{matched.get('cost')}，AP{ap})"

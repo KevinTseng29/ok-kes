@@ -88,6 +88,18 @@ class TestUnplayablePriorityCard(unittest.TestCase):
         self.assertEqual(keys, ["1", "enter", "2", "enter"])  # 先照優先級，還在手上就兜底按一張
 
 
+class TestDuplicateCards(unittest.TestCase):
+    """兩張聚光燈：打出一張後手上還有一張同名的，不能當成沒出掉而改去兜底打別人的牌。"""
+
+    def test_second_copy_played_by_priority(self):
+        t = battle_task()
+        t.config = {"出牌优先级": ["聚光灯"]}
+        two = [{"name": "聚光灯", "key": "1"}, {"name": "聚光灯", "key": "2"}, {"name": "守护", "key": "3"}]
+        one = [{"name": "聚光灯", "key": "1"}, {"name": "守护", "key": "2"}]
+        keys = run_battle(t, 4, [two, two, one, one])
+        self.assertEqual(keys, ["1", "enter", "1", "enter"])
+
+
 class TestArpeggioOrder(unittest.TestCase):
     """好幾張琶音同時在手上：照編號 0→5 先出小的（後面的費用才會降到 0）。"""
 
