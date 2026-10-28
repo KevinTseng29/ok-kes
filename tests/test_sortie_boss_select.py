@@ -58,6 +58,7 @@ class TestBossSelection(unittest.TestCase):
         for _ in range(10):  # 原本是隨機，多跑幾次確定每次都避開
             self.assertEqual(self.boss_page(("瘟神", "某某"), ("戴奥斯", "塞拉菲翁")), 0.641)
             self.assertEqual(self.boss_page(("尼希隆", "美梦"), ("金狮子", "某某")), 0.358)
+            self.assertEqual(self.boss_page(("金色鬃毛", "某某"), ("尼希隆", "美梦")), 0.641)  # 金狮子的另一个名称
 
     def test_random_when_both_or_none_avoided(self):
         self.assertIn(self.boss_page(("瘟神", "甲"), ("金狮子", "乙")), (0.358, 0.641))
