@@ -1204,6 +1204,91 @@ def find_best_map_route_by_priority(map_info, node_type_priority):
     }
 
 
+# ------------------------- 整层大地图路线规划（出击模式） -------------------------
+# 每层第一次到路线选择页时打开大地图扫描整层（big_map.py），规划好整条路线后照着走；
+# 记住目前走到哪个节点，画面上可选的节点和记录对不上就下次重新扫描。
+
+def _uses_big_map(task: TriggerTask):
+    return type(task).__name__ == "SortieMode"
+
+
+def scan_big_map(task: TriggerTask):
+    """路线选择页点小地图右上角的放大镜打开整层大地图，往右滑到底并截图，再点缩小按钮关掉。
+    回传 big_map.parse_big_map 的 map_info；没打开或辨识失败回传 None。"""
+    import big_map
+    _move_and_click(task, *big_map.ZOOM_IN)
+    task.sleep(1.5)
+    if not big_map.is_open(task.frame):
+        task.log_info("大地图：点放大镜后没有打开大地图，改用小地图规划")
+        return None
+    frames = [task.frame.copy()]
+    if task.is_adb():
+        for _ in range(3):
+            task.swipe_relative(0.86, 0.92, 0.23, 0.92, duration=0.8, settle_time=0.5)
+            task.sleep(1)
+            frame = task.frame.copy()
+            offset = big_map.frame_offset(big_map.normalize(frames[-1]), big_map.normalize(frame))
+            if offset is None or offset < 30:
+                break  # 到底了
+            frames.append(frame)
+    for _ in range(2):
+        _move_and_click(task, *big_map.ZOOM_OUT)
+        task.sleep(1.5)
+        if not big_map.is_open(task.frame):
+            break
+    map_info = big_map.parse_big_map(frames)
+    if not map_info or len(map_info["nodes"]) < 2:
+        task.log_info(f"大地图：截了{len(frames)}张但辨识失败（找不到目前位置或节点），改用小地图规划")
+        return None
+    task.log_info(f"大地图：截了{len(frames)}张，{big_map.describe(map_info)}")
+    return map_info
+
+
+def _big_map_route_plan(task: TriggerTask, priority, visible_count):
+    """用整层大地图规划下一步；回传和 find_best_map_route_by_priority 同样的 dict，
+    next_row 是「目前节点的下一步里，由上往下第几个」（对应右侧可点的节点）。不能用时回传 None。"""
+    state = getattr(task, "_big_map", None)
+    floor = (getattr(task, "node_status", None) or {}).get("pass_final_boss_count", 0)
+    if not state or state.get("floor") != floor or state.get("stale"):
+        map_info = scan_big_map(task)
+        task._big_map = state = {"floor": floor, "map": map_info, "current": 0} if map_info else None
+        if not state:
+            return None
+    map_info, current = state["map"], state["current"]
+    nodes_by_id = {node["id"]: node for node in map_info["nodes"]}
+    successors = sorted(map_info["adjacency"].get(current, []), key=lambda node_id: nodes_by_id[node_id]["slot"])
+    if not successors or len(successors) != visible_count:
+        task.log_info(f"大地图：记录的下一步有{len(successors)}个、画面上可选{visible_count}个，"
+                      "这次改用小地图规划，下次重新扫描")
+        state["stale"] = True
+        return None
+    # 规划器从 type 为「当前位置」的节点出发；走过的起点改成「已走过」
+    nodes = [dict(node, type="当前位置" if node["id"] == current
+                  else ("已走过" if node["type"] == "当前位置" else node["type"]))
+             for node in map_info["nodes"]]
+    plan = find_best_map_route_by_priority({"nodes": nodes, "adjacency": map_info["adjacency"]}, priority)
+    if not plan or len(plan["route"]) < 2:
+        state["stale"] = True
+        return None
+    state["successors"] = successors
+    plan["next_row"] = successors.index(plan["route"][1]) + 1
+    plan["route"] = [f"{nodes_by_id[node_id]['column']}列{nodes_by_id[node_id]['type']}" for node_id in plan["route"]]
+    plan["source"] = "大地图"
+    return plan
+
+
+def _big_map_moved(task: TriggerTask, chosen_index):
+    """点了右侧第 chosen_index 个节点（由上往下，0 起算）：更新大地图上目前所在的节点。"""
+    state = getattr(task, "_big_map", None)
+    successors = state.get("successors") if state else None
+    if successors and 0 <= chosen_index < len(successors):
+        state["current"] = successors[chosen_index]
+    elif state:
+        state["stale"] = True
+    if state:
+        state["successors"] = None
+
+
 def _mark_selected_card_by_gold_border(
     task: TriggerTask,
     cards,
@@ -4066,11 +4151,14 @@ def handle_route_selection(task: TriggerTask):
         center_x, center_y = relative_center(node["box"])
         return shop_priority, type_priority, special_priority, center_y, center_x
 
-    # 先根据左下角小地图的完整连通关系规划路线，再用右侧当前可点击节点
-    # 校验规划结果。两边识别不一致时，使用当前节点识别结果兜底。
-    map_info = recognize_map_connections(task)
-    route_plan = find_best_map_route_by_priority(map_info, priority)
+    # 先规划路线，再用右侧当前可点击节点校验规划结果。两边识别不一致时，使用当前节点识别结果兜底。
+    # 出击模式用整层大地图规划（每层扫描一次，之后照着走）；不能用时才看左下角小地图。
     visible_nodes = sorted(nodes, key=lambda item: relative_center(item["box"])[1])
+    route_plan = _big_map_route_plan(task, priority, len(visible_nodes)) if _uses_big_map(task) else None
+    if route_plan is None:
+        map_info = recognize_map_connections(task)
+        route_plan = find_best_map_route_by_priority(map_info, priority)
+    plan_source = route_plan.get("source", "小地图") if route_plan else "小地图"
     node = None
     if route_plan and route_plan["next_row"] is not None:
         planned_index = route_plan["next_row"] - 1
@@ -4086,22 +4174,24 @@ def handle_route_selection(task: TriggerTask):
             )
             specials_match = actual_specials == expected_specials
             task.log_info(
-                f"小地图规划路线={route_plan['route']}，"
+                f"{plan_source}规划路线={route_plan['route']}，"
                 f"下一列第{route_plan['next_row']}个节点，"
                 f"预计={route_plan['next_node_type']}+{sorted(expected_specials)}，"
                 f"当前节点识别={planned_node['node_type']}+{sorted(actual_specials)}"
             )
             if type_matches and specials_match:
                 node = planned_node
-                task.log_info("小地图规划与当前节点识别一致，按规划结果进入")
+                task.log_info(f"{plan_source}规划与当前节点识别一致，按规划结果进入")
             else:
                 task.log_info(
-                    "小地图规划与当前节点识别不一致，"
+                    f"{plan_source}规划与当前节点识别不一致，"
                     "改用当前节点的路线优先级兜底选择"
                 )
+                if plan_source == "大地图":
+                    task._big_map["stale"] = True
         else:
             task.log_info(
-                f"小地图规划要求进入下一列第{route_plan['next_row']}个节点，"
+                f"{plan_source}规划要求进入下一列第{route_plan['next_row']}个节点，"
                 f"但当前仅识别到{len(visible_nodes)}个节点，改用优先级兜底"
             )
     else:
@@ -4109,6 +4199,8 @@ def handle_route_selection(task: TriggerTask):
 
     if node is None:
         node = sorted(nodes, key=sort_key)[0]
+    if plan_source == "大地图":
+        _big_map_moved(task, visible_nodes.index(node))
 
     # 更新 node_type 为最优先的节点类型
     if hasattr(task, 'node_status'):
