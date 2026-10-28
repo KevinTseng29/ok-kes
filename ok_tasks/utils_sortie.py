@@ -10,7 +10,7 @@ from utils import (
     handle_card_reward, handle_equipment,
     handle_select_card, handle_copy_member,
     handle_convert_card,
-    handle_negotiation, handle_continue, handle_confirm, handle_enter,
+    handle_negotiation, handle_dice_roll, handle_continue, handle_confirm, handle_enter,
     handle_event_task, handle_route_selection, handle_obtain_reward,
     handle_leave, handle_next_step, handle_select, handle_view_original,
     handle_close_button,
@@ -1367,6 +1367,7 @@ PAGE_HANDLERS = [
     handle_copy_member,
     handle_convert_card,
     handle_negotiation,
+    handle_dice_roll,  # 事件技能检定的掷骰页
     handle_sortie_reward_settlement,
     handle_sortie_reward_claim,
     handle_continue,

@@ -3631,6 +3631,24 @@ def handle_convert_card(task: TriggerTask):
     return False
 
 
+_DICE_CLICK_INTERVAL = 3  # 点完骰子等动画跑完再点
+
+
+def handle_dice_roll(task: TriggerTask):
+    """事件技能检定（例如「[巧手]拯救两名士兵」）的掷骰页：上方技能名与数值、中间一颗骰子、下方「掷骰影响+N」，
+    要点中间的骰子才会继续。原本没有处理，每次卡 90 秒等守护回首页（2026-10-29 05:45、06:20）。"""
+    box = next((b for b in task.all_texts if "掷骰" in b.name
+                and (b.y + b.height / 2) / task.height > 0.85), None)
+    if box is None:
+        return False
+    if time.time() - getattr(task, "_dice_clicked_at", 0) < _DICE_CLICK_INTERVAL:
+        return True  # 骰子动画还在跑
+    task._dice_clicked_at = time.time()
+    task.log_info(f"检测到掷骰页面（{box.name}），点击骰子")
+    _move_and_click(task, 0.5, 0.45)
+    return True
+
+
 def handle_negotiation(task: TriggerTask):
     """谈判失败页面: 点击下一步跳过。"""
     title = find_box_at_point(task, 0.498, 0.683)

@@ -10,7 +10,7 @@ from utils import (
     handle_card_reward, handle_equipment,
     handle_select_card, handle_copy_card_choice, handle_copy_member,
     handle_convert_card,
-    handle_negotiation, handle_continue, handle_confirm, handle_enter,
+    handle_negotiation, handle_dice_roll, handle_continue, handle_confirm, handle_enter,
     handle_event_task, handle_route_selection, handle_obtain_reward,
     handle_leave, handle_next_step, handle_select, handle_rest, handle_view_original, handle_weakness_info,
     handle_close_button,
@@ -1478,6 +1478,7 @@ PAGE_HANDLERS = [
     handle_convert_card,
     handle_discovery_select,
     handle_negotiation,
+    handle_dice_roll,  # 事件技能检定的掷骰页
     handle_chaos_reward_settlement, #卡厄思奖励结算页面，优先级高于继续按钮
     handle_chaos_reward_claim, #卡厄思模式奖励领取页面
     handle_go_to_memory_end, #卡厄思结算页面右下角「前往记忆之末」按钮
