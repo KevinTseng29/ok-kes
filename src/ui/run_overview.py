@@ -23,6 +23,21 @@ from src import run_overview_data as data
 from src import run_stats
 
 MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieMode', 'StoryMode')
+
+
+def install():
+    """即時觸發頁上方的任務資訊表（含 Log）只在「目前任務」不是空的時候顯示；觸發式任務每一輪
+    跑完就清空，表格一下出現一下消失，版面一直跳動。這些資訊改由運行總覽顯示，所以這裡固定隱藏。
+    在建立 ok.OK 之前呼叫；一次性任務頁不受影響。"""
+    from ok.gui.tasks.TriggerTaskTab import TriggerTaskTab
+    if getattr(TriggerTaskTab, '_info_hidden', False):
+        return
+    TriggerTaskTab._info_hidden = True
+
+    def update_info_table(self):
+        self.task_info_container.hide()
+
+    TriggerTaskTab.update_info_table = update_info_table
 MAX_LOG_LINES = 3000
 STATUS_WIDTH = 360
 LOG_COLORS = {'WARNING': '#d08700', 'ERROR': '#e04848', 'CRITICAL': '#e04848', 'DEBUG': '#8a8a8a'}
