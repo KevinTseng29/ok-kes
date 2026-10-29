@@ -1149,13 +1149,21 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
     base_card_type = _get_game_text(task, "基础")
     try:
         task.sleep(0.5)
+        previous_y = None
         for step in range(12):
             task.all_texts = _simplify_texts(task.ocr())
             target_y = _target_member_y(task)
             # 主练不一定排第一段（2026-10-29 主练奥尔莱亚排在罗斯薇瑟后面，之前一直数到罗斯薇瑟）：
             # 画面上还没有主练名字、或名字太靠下（卡被切掉）就往下翻
             if target_y is None or target_y > 0.75:
-                if step == 11 or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME):
+                # 到底的判断：滚动条白点不一定准，翻了一次主练名字位置没变也算到底
+                stuck = target_y is not None and previous_y is not None and abs(target_y - previous_y) < 0.01
+                previous_y = target_y
+                at_end = step == 11 or stuck or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME)
+                if at_end and target_y is not None:
+                    # 主练排最后一段、牌又少：翻到底名字还是在下方（19:37 一直找不到）。段首张数在名字上方，照样读
+                    pass
+                elif at_end:
                     # 每段约 0.83 个画面高，主练排第三段要翻 1.3 个画面以上；找不到时记下主战员卡名字区读到的字
                     names = [
                         box.name for box in task.all_texts
@@ -1163,9 +1171,10 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                     ]
                     task.log_info(f"预设卡组: 所有牌堆里找不到主练那一段（主战员卡名字区读到 {names}）")
                     break
-                _scroll_card_page(task, 0.620, 0.600, -1, _DECK_PAGE_NAME, distance=0.30)
-                task.sleep(0.45)
-                continue
+                else:
+                    _scroll_card_page(task, 0.620, 0.600, -1, _DECK_PAGE_NAME, distance=0.30)
+                    task.sleep(0.45)
+                    continue
             cards = recognize_cards_in_deck(task, page=_DECK_PAGE_NAME)
             icon_tops = _deck_member_icon_tops(task)
             filtered, reached_next, section_top = _filter_deck_section(task, cards, icon_tops, target_y)
