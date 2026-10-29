@@ -1159,7 +1159,8 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                 # 到底的判断：滚动条白点不一定准，翻了一次主练名字位置没变也算到底
                 stuck = target_y is not None and previous_y is not None and abs(target_y - previous_y) < 0.01
                 previous_y = target_y
-                at_end = step == 11 or stuck or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME)
+                at_bottom = _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME)
+                at_end = step == 11 or stuck or at_bottom
                 if at_end and target_y is not None:
                     # 主练排最后一段、牌又少：翻到底名字还是在下方（19:37 一直找不到）。段首张数在名字上方，照样读
                     pass
@@ -1169,7 +1170,14 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                         box.name for box in task.all_texts
                         if 0.15 <= (box.x + box.width / 2) / (task.width or 1) <= 0.30
                     ]
-                    task.log_info(f"预设卡组: 所有牌堆里找不到主练那一段（主战员卡名字区读到 {names}）")
+                    if at_bottom:
+                        # 卡被删光的主战员整段不会出现（21:21 实测奥尔莱亚 0 张时只剩罗斯薇瑟、海德玛丽、中立三段）：
+                        # 真的翻到底还是没有主练那一段，就当成 0 张（刷空档逃脱前还会再数一次确认）
+                        task.log_info(f"预设卡组: 翻到底都没有主练那一段，当成主练 0 张（主战员卡名字区读到 {names}）")
+                        non_preset_count = 0
+                        section_complete = True
+                    else:
+                        task.log_info(f"预设卡组: 所有牌堆里找不到主练那一段（主战员卡名字区读到 {names}）")
                     break
                 else:
                     _scroll_card_page(task, 0.620, 0.600, -1, _DECK_PAGE_NAME, distance=0.30)
