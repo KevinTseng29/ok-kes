@@ -171,6 +171,16 @@ class TestDeckSection(unittest.TestCase):
         task = SimpleNamespace(width=1280, height=720, frame=frame, all_texts=[], log_info=lambda *_: None)
         self.assertEqual(preset_deck._deck_section_header_count(task, 0.328), 2)
 
+    def test_header_count_ignores_single_digit_decoration(self):
+        """數字下面的小裝飾被整張 OCR 認成「0」：00:12 麗塔那段寫「03」卻讀成 0 張、差點當成刪光。
+        段首一定是兩位數，單個「0」不算，改讀放大的那一小塊。"""
+        if importlib.util.find_spec("onnxocr") is None:
+            self.skipTest("需要 onnxocr")
+        frame = cv2.imread(os.path.join(ROOT, "tests", "fixtures", "team", "deck_rita_03.jpg"))
+        task = SimpleNamespace(width=1280, height=720, frame=frame, log_info=lambda *_: None,
+                               all_texts=[self.box("0", 0.116, 0.394), self.box("麗塔", 0.253, 0.646)])
+        self.assertEqual(preset_deck._deck_section_header_count(task, 0.31), 3)
+
     def test_section_excludes_previous_and_next_member(self):
         task = SimpleNamespace(width=1280, height=720)
         cards = [self.card(0.05), self.card(0.15), self.card(0.55), self.card(0.98)]

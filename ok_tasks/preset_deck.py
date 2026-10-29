@@ -1008,9 +1008,14 @@ def _deck_section_header_count(task, top):
         center_x = (box.x + box.width / 2) / (task.width or 1)
         center_y = (box.y + box.height / 2) / (task.height or 1)
         text = (getattr(box, "name", "") or "").strip()
-        if _HEADER_COUNT_X[0] <= center_x <= _HEADER_COUNT_X[1] and top < center_y <= top + 0.09                 and text.isdigit() and len(text) <= 2:
+        # 段首数字一定是两位数（02、03、06）；数字下面的小装饰常被认成一个「0」（00:12 把「03」读成 0）
+        if _HEADER_COUNT_X[0] <= center_x <= _HEADER_COUNT_X[1] and top < center_y <= top + 0.09                 and _is_header_count(text):
             return int(text)
     return _ocr_header_count(task, top)
+
+
+def _is_header_count(text):
+    return re.fullmatch(r"\d{2}", text or "") is not None
 
 
 def _ocr_header_count(task, top):
@@ -1029,7 +1034,7 @@ def _ocr_header_count(task, top):
         task.log_info(f"预设卡组: 读取段首张数失败：{exc}")
         return None
     digits = [text.strip() for _, (text, _score) in (result[0] or [])
-              if text.strip().isdigit() and len(text.strip()) <= 2] if result else []
+              if _is_header_count(text.strip())] if result else []
     return int(digits[0]) if digits else None
 
 
@@ -1237,6 +1242,10 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
             icon_tops = _deck_member_icon_tops(task)
             filtered, reached_next, section_top = _filter_deck_section(task, cards, icon_tops, target_y)
             header_count = _deck_section_header_count(task, section_top)
+            if header_count is not None and header_count < len(filtered):
+                # 段首数字比这一段看得到的卡还少就是读错（00:12 丽塔那段写「03」却读成 0，差点当成删光）
+                task.log_info(f"预设卡组: 段首张数读到 {header_count}，这一段却看得到 {len(filtered)} 张，不采用")
+                header_count = None
             for name in targets:
                 count = sum(
                     1 for card in filtered if _name_matches(name, _card_name(card))
