@@ -949,15 +949,39 @@ def _filter_deck_section(task, cards, icon_tops, target_y):
     return filtered, next_icon is not None, top
 
 
+_HEADER_COUNT_X = (0.09, 0.14)
+
+
 def _deck_section_header_count(task, top):
-    """段首牌堆图标下方的数字就是这位主战员的卡牌张数（2026-10-29 实测罗斯薇瑟那段写「06」、正好 6 张）。"""
+    """段首牌堆图标下方的数字就是这位主战员的卡牌张数（2026-10-29 实测罗斯薇瑟那段写「06」、正好 6 张）。
+    整张画面的 OCR 常漏掉这个小数字（奥尔莱亚那段的「02」没读到），没有就把那一小块放大 3 倍单独 OCR。"""
     for box in task.all_texts:
         center_x = (box.x + box.width / 2) / (task.width or 1)
         center_y = (box.y + box.height / 2) / (task.height or 1)
         text = (getattr(box, "name", "") or "").strip()
-        if 0.09 <= center_x <= 0.14 and top < center_y <= top + 0.09 and text.isdigit() and len(text) <= 2:
+        if _HEADER_COUNT_X[0] <= center_x <= _HEADER_COUNT_X[1] and top < center_y <= top + 0.09                 and text.isdigit() and len(text) <= 2:
             return int(text)
-    return None
+    return _ocr_header_count(task, top)
+
+
+def _ocr_header_count(task, top):
+    frame = getattr(task, "frame", None)
+    if frame is None or not hasattr(frame, "shape"):
+        return None
+    height, width = frame.shape[:2]
+    crop = frame[int(max(0.0, top) * height):int(min(1.0, top + 0.09) * height),
+                 int(_HEADER_COUNT_X[0] * width):int(_HEADER_COUNT_X[1] * width)]
+    if crop.size == 0:
+        return None
+    try:
+        from utils_sortie import _ap_ocr_engine
+        result = _ap_ocr_engine().ocr(cv2.resize(crop, None, fx=3, fy=3))
+    except Exception as exc:
+        task.log_info(f"预设卡组: 读取段首张数失败：{exc}")
+        return None
+    digits = [text.strip() for _, (text, _score) in (result[0] or [])
+              if text.strip().isdigit() and len(text.strip()) <= 2] if result else []
+    return int(digits[0]) if digits else None
 
 
 def _filter_deck_by_member_icon(task, cards, icon_tops, target_y):
@@ -1125,16 +1149,21 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
     base_card_type = _get_game_text(task, "基础")
     try:
         task.sleep(0.5)
-        for step in range(8):
+        for step in range(12):
             task.all_texts = _simplify_texts(task.ocr())
             target_y = _target_member_y(task)
             # 主练不一定排第一段（2026-10-29 主练奥尔莱亚排在罗斯薇瑟后面，之前一直数到罗斯薇瑟）：
             # 画面上还没有主练名字、或名字太靠下（卡被切掉）就往下翻
             if target_y is None or target_y > 0.75:
-                if step == 7 or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME):
-                    task.log_info("预设卡组: 所有牌堆里找不到主练那一段")
+                if step == 11 or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME):
+                    # 每段约 0.83 个画面高，主练排第三段要翻 1.3 个画面以上；找不到时记下主战员卡名字区读到的字
+                    names = [
+                        box.name for box in task.all_texts
+                        if 0.15 <= (box.x + box.width / 2) / (task.width or 1) <= 0.30
+                    ]
+                    task.log_info(f"预设卡组: 所有牌堆里找不到主练那一段（主战员卡名字区读到 {names}）")
                     break
-                _scroll_card_page(task, 0.620, 0.560, -1, _DECK_PAGE_NAME, distance=0.18)
+                _scroll_card_page(task, 0.620, 0.600, -1, _DECK_PAGE_NAME, distance=0.30)
                 task.sleep(0.45)
                 continue
             cards = recognize_cards_in_deck(task, page=_DECK_PAGE_NAME)
@@ -1169,8 +1198,10 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                 non_preset_count = max(0, header_count - preset_seen)
                 section_complete = True
             else:
+                # 读不到段首张数就不下结论：卡牌特征认不到（奥尔莱亚的金色卡）会把张数算成 0，18:56 因此提早逃脱
                 non_preset_count = len(filtered) - preset_seen
-                section_complete = reached_next
+                section_complete = False
+                task.log_info("预设卡组: 读不到主练段首的卡牌张数，这次不判断删光了没有")
             # 目标段如果没有结束图标，当前这一屏读完即可，宁少算不多算。
             break
     finally:

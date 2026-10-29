@@ -97,6 +97,15 @@ class TestDeckSection(unittest.TestCase):
         self.assertEqual(preset_deck._deck_section_header_count(task, 0.139), 6)
         self.assertIsNone(preset_deck._deck_section_header_count(task, 0.60))
 
+    def test_header_count_from_crop_when_full_ocr_misses(self):
+        """整張 OCR 漏掉奧爾萊亞段首的「02」：放大那一小塊單獨讀（18:56 讀不到被當成 0 張、提早逃脫）。"""
+        if importlib.util.find_spec("onnxocr") is None:
+            self.skipTest("需要 onnxocr")
+        frame = np.zeros((720, 1280, 3), np.uint8)
+        frame[180:520, 0:400] = cv2.imread(os.path.join(ROOT, "tests", "fixtures", "team", "deck_section_header.png"))
+        task = SimpleNamespace(width=1280, height=720, frame=frame, all_texts=[], log_info=lambda *_: None)
+        self.assertEqual(preset_deck._deck_section_header_count(task, 0.328), 2)
+
     def test_section_excludes_previous_and_next_member(self):
         task = SimpleNamespace(width=1280, height=720)
         cards = [self.card(0.05), self.card(0.15), self.card(0.55), self.card(0.98)]
