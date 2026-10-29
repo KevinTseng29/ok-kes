@@ -472,8 +472,9 @@ def _add_meditation_pending(task, name, current_effect, target_effect):
 
 def preset_select_names(task, action):
     """选卡页（请选择…灵光/闪光/复制…卡牌）要找的卡名，照优先顺序；没有预设卡组回传 None（照旧用清单）。
-    - 冥想（再次灵光一闪）：只找待冥想的卡，照待冥想顺序
-    - 其他灵光一闪：先找待冥想的（效果还不对），再照预设卡组顺序
+    - 灵光一闪（含冥想）：先找待冥想的（效果还不对），再照预设卡组顺序。冥想的选卡页只列闪过的卡，
+      待冥想的若还没闪过（原始效果）根本不在列表上，只找待冥想的会付了冥想费却没卡可选（14:49、14:53 白花 200 信用点）；
+      选到的卡在闪光页没有目标效果会跳过、保留原效果，不会改坏
     - 复制：照预设卡组顺序，同名张数已够的不复制"""
     records = load_preset_records(task)
     if not records:
@@ -499,8 +500,6 @@ def preset_select_names(task, action):
                 return next((value for key, value in counts.items() if _name_matches(key, name)), 0)
             order = [name for name in order if have(name) < targets.get(_compact(name), 1)]
         return unique(order)
-    if _reflash_active(task):
-        return unique(pending)
     return unique(pending + order)
 
 

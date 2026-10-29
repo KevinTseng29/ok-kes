@@ -39,9 +39,10 @@ class TestPresetSelectNames(unittest.TestCase):
         with patch.object(preset_deck, "load_preset_records", return_value=RECORDS):
             return preset_deck.preset_select_names(task, action)
 
-    def test_meditation_only_pending(self):
+    def test_meditation_pending_first_then_other_preset_cards(self):
+        """冥想選卡頁只列閃過的卡：待冥想的明滅劍還沒閃過就不在列表上，要能退而選其他預設卡（付了冥想費別空手）。"""
         task = preset_task(pending=[("明灭剑", "片鱗:暗(閃擊)")], reflash=True)
-        self.assertEqual(self.names(task, "灵光"), ["明灭剑"])
+        self.assertEqual(self.names(task, "灵光"), ["明灭剑", "劍之共鳴", "光之劍路"])
 
     def test_flash_pending_first_then_preset_order(self):
         task = preset_task(pending=[("之剑路", "持續1回合自身傷害量增加15%")])
