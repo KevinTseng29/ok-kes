@@ -42,12 +42,25 @@ class TestEmptyDeckDone(unittest.TestCase):
             handled = utils._check_empty_deck_done(task)
         return handled, read, click
 
-    def test_done_when_no_other_cards_left(self):
+    def test_done_after_two_consistent_reads(self):
+        """讀錯一次就會提早逃脫（19:00 剛刪 2 張讀成剩 2 張）：要連續兩次都數到刪光才算達成。"""
         task = empty_deck_task()
-        handled, read, _ = self.check(task, {"__non_preset__": 0, "__section_complete__": True})
+        done_counts = {"__non_preset__": 0, "__section_complete__": True}
+        handled, read, _ = self.check(task, done_counts)
         self.assertTrue(handled)
-        self.assertTrue(task.node_status["empty_deck_done"])
+        self.assertFalse(task.node_status["empty_deck_done"])
         self.assertEqual(read.call_args.kwargs["extra_names"], ["明滅劍", "劍之共鳴"])
+        handled, read, _ = self.check(task, done_counts)  # 同一個移除數也要再數一次
+        read.assert_called_once()
+        self.assertTrue(task.node_status["empty_deck_done"])
+
+    def test_second_read_disagrees(self):
+        task = empty_deck_task()
+        self.check(task, {"__non_preset__": 0, "__section_complete__": True})
+        self.check(task, {"__non_preset__": 2, "__section_complete__": True})
+        self.assertFalse(task.node_status["empty_deck_done"])
+        _, read, _ = self.check(task, {})
+        read.assert_not_called()  # 不一致就等下一次移除再數
 
     def test_not_done_with_cards_left_or_section_cut(self):
         for counts in ({"__non_preset__": 2, "__section_complete__": True},
@@ -113,6 +126,18 @@ class TestDeckSection(unittest.TestCase):
         self.assertEqual([c["feature_box"].y / 720 for c in filtered], [0.15, 0.55])
         self.assertTrue(reached_next)
         self.assertAlmostEqual(top, 0.139)
+
+
+class TestEmptyDeckSkipsFlash(unittest.TestCase):
+    def test_skip_flash_page_when_possible(self):
+        """刷空檔用不到閃光，戰鬥後的靈光一閃還會拿到新卡（主練越刪越多）：能跳過就跳過。"""
+        task = empty_deck_task()
+        task.all_texts = [SimpleNamespace(name="跳过", x=0.94 * 1280 - 20, y=0.93 * 720 - 10, width=40, height=20)]
+        task.click_box = lambda box: task.logs.append("click_skip")
+        with patch.object(utils, "recognize_cards") as recognize, patch.object(utils, "_journal"):
+            self.assertTrue(utils.handle_view_original(task, page_confirmed=True))
+        recognize.assert_not_called()
+        self.assertIn("click_skip", task.logs)
 
 
 class TestTopRightToggle(unittest.TestCase):

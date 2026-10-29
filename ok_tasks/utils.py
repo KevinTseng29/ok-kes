@@ -326,7 +326,8 @@ def _check_empty_deck_done(task: TriggerTask):
         task.sleep(1)
         return True
     removed = status.get("removed_card_count", 0)
-    if not removed or removed == getattr(task, "_empty_deck_checked_removed", None):
+    confirming = getattr(task, "_empty_deck_low_reads", 0) == 1
+    if not removed or (removed == getattr(task, "_empty_deck_checked_removed", None) and not confirming):
         return False
     task._empty_deck_checked_removed = removed  # 读不到也等下次移除后再数，免得每帧开牌堆
     import preset_deck as preset_module
@@ -343,9 +344,17 @@ def _check_empty_deck_done(task: TriggerTask):
         f"刷空档：已移除{removed}张，主练预设卡组以外剩{remaining}张（目标≤{target}），"
         + ("主练整段都在画面里" if complete else "没看到下一位主战员，可能还有没数到的")
     )
-    if remaining <= target and complete:
-        status["empty_deck_done"] = True
-        _journal(task, "刷空档", f"达成：主练预设卡组以外剩{remaining}张，逃脱")
+    if not (remaining <= target and complete):
+        task._empty_deck_low_reads = 0
+        return True
+    # 读错一次就会提早逃脱（19:00 刚删 2 张时读成剩 2 张，实际 4 张）：关掉牌堆重开再数一次，两次都达标才算
+    task._empty_deck_low_reads = getattr(task, "_empty_deck_low_reads", 0) + 1
+    if task._empty_deck_low_reads < 2:
+        task.log_info("刷空档：看起来删光了，重开牌堆再数一次确认")
+        return True
+    task._empty_deck_low_reads = 0
+    status["empty_deck_done"] = True
+    _journal(task, "刷空档", f"达成：主练预设卡组以外剩{remaining}张，逃脱")
     return True
 
 
@@ -1824,17 +1833,21 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
         if selected >= count:
             return True
 
+    # 刷空档（实验卡厄思）只删主练的卡：往上翻时先只找主练那一排，翻到顶都没有才删基础牌
+    # （19:08 往下没找到主练，往上翻第一页就删了罗斯薇瑟的剑幕）
+    main_row_only = prefer_target_member_row and _empty_deck_enabled(task)
     if prefer_remove_base and selected < count:
         bottom_to_top_cards = sorted(
             cards,
             key=lambda card: (card["y"], card["x"]),
             reverse=True,
         )
-        click_cards(
-            bottom_to_top_cards,
-            lambda card: base_card_type in card["type"],
-            "底部页面优先移除基础牌，点击",
-        )
+        if not main_row_only:
+            click_cards(
+                bottom_to_top_cards,
+                lambda card: base_card_type in card["type"],
+                "底部页面优先移除基础牌，点击",
+            )
         if selected >= count:
             return True
 
@@ -1864,6 +1877,8 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             if selected >= count:
                 task.log_info(f"{page}: 已选中{selected}/{count}张卡牌")
                 return True
+            if main_row_only:
+                continue
             bottom_to_top_cards = sorted(
                 cards,
                 key=lambda card: (card["y"], card["x"]),
@@ -1873,6 +1888,15 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
                 bottom_to_top_cards,
                 lambda card: base_card_type in card["type"],
                 "向上翻页找到基础牌，点击",
+            )
+            if selected >= count:
+                return True
+        if main_row_only and selected < count:
+            task.log_info(f"{page}: 刷空档整个列表都没找到主练那一排，退回删基础牌")
+            click_cards(
+                sorted(cards, key=lambda card: (card["y"], card["x"]), reverse=True),
+                lambda card: base_card_type in card["type"],
+                "刷空档没找到主练，删基础牌，点击",
             )
             if selected >= count:
                 return True
@@ -3618,8 +3642,8 @@ def _scroll_to_target_member_for_card_removal(task: TriggerTask):
         if scroll_count >= max_scrolls:
             task.log_info(f"{page}: 向下滚动已达到{max_scrolls}次限制")
             return
-        # 原本一次只滑四分之一（约 0.15 个画面），要停很多次；改成一次 0.3 个画面，头像高度不到这么多，不会滑过头
-        _scroll_card_page(task, scroll_x, scroll_y, -3, page, distance=0.30)
+        # 原本一次只滑约 0.15 个画面要停很多次；0.3 又会滑过头（19:05、19:08 都没找到主练），取 0.22
+        _scroll_card_page(task, scroll_x, scroll_y, -3, page, distance=0.22)
         scroll_count += 1
 
 
@@ -5366,6 +5390,13 @@ def handle_view_original(task: TriggerTask, card_chooser=None, page_confirmed=Fa
         if not ((box1 and (_get_game_text(task, '查看原件') in box1.name or _get_game_text(task, '查看之前的闪光') in box1.name)) or (box2 and (_get_game_text(task, '查看原件') in box2.name or _get_game_text(task, '查看之前的闪光') in box2.name))):
             return False
 
+    if _empty_deck_enabled(task) and _find_flash_skip_box(task) is not None:
+        # 刷空档用不到闪光，战斗后的灵光一闪还会拿到新卡（19:07 主练多了一张促进成长，越删越多）：能跳过就跳过
+        task.log_info("刷空档：闪光页能跳过就跳过，不拿新卡")
+        _journal(task, "灵光一闪", "刷空档跳过")
+        _click_flash_skip(task)
+        return True
+
     cards = recognize_cards(task, page="卡牌闪光页面")
     if not cards:
         return False
@@ -5720,6 +5751,7 @@ def reset_mission_status(task: TriggerTask):
     task._removal_deck_counts_time = 0
     task._memory_engrave_leave_count = 0
     task._empty_deck_checked_removed = None
+    task._empty_deck_low_reads = 0
 
 
 def reset_layer_status(task: TriggerTask):
