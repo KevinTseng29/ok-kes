@@ -6142,6 +6142,20 @@ def handle_card_assign(task: TriggerTask):
         task.log_info("未找到跳过按钮")
         return False
 
+    if _empty_deck_enabled(task) and target_member_index is not None:
+        # 刷空档：主练要删光，记忆卡这类分配的卡不能给她（22:52「记忆：丧失」给了丽塔）
+        available_members = [member for member in available_members if member[0] != target_member_index]
+        if not available_members:
+            task.log_info("刷空档：只有主练能接受这张卡，不拿")
+            if is_purchase_page:
+                task.click_box(cancel_box)
+                task.sleep(1)
+                return True
+            if skip_box:
+                task.click_box(skip_box)
+                return True
+            return False
+        task.log_info(f"刷空档：卡牌不给主练（第{target_member_index + 1}号），改给其他主战员")
     target_available = next(
         (member for member in available_members if member[0] == target_member_index),
         None,

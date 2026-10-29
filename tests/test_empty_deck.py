@@ -185,6 +185,52 @@ class TestEmptyDeckSkipsFlash(unittest.TestCase):
         self.assertIn("click_skip", task.logs)
 
 
+class TestEmptyDeckCardAssign(unittest.TestCase):
+    """刷空檔：記憶卡這類分配的卡不給主練（22:52「記憶：丧失」分給了麗塔，主練又多一張要刪）。"""
+
+    def assign(self, task, unavailable=()):
+        member_ys = (0.40, 0.55, 0.70)
+        lv_texts = [SimpleNamespace(name="Lv", x=0.45 * 1280 - 10, y=y * 720 - 10, width=20, height=20)
+                    for y in member_ys]
+        title = SimpleNamespace(name="请选择要接受卡牌的主战员")
+
+        def box_at(_task, x, y):
+            if (x, y) == (0.863, 0.133):
+                return title
+            member = min(range(3), key=lambda i: abs(member_ys[i] - 0.0795 - y))
+            return SimpleNamespace(name="无法获得") if member in unavailable else None
+
+        deck = {}
+        with patch.object(utils, "find_box_at_point", side_effect=box_at),                 patch.object(utils, "_get_game_text", side_effect=lambda _t, text: text),                 patch.object(utils, "recognize_cards", return_value=[{"name": "记忆：丧失", "description": ""}]),                 patch.object(utils, "_get_card_list", return_value=["记忆：丧失"]),                 patch.object(utils, "_get_card_reward_priority", return_value=["记忆：丧失"]),                 patch.object(utils, "_find_member_level_tags", return_value=lv_texts),                 patch.object(utils, "_find_target_member_index", return_value=2),                 patch.object(utils, "_member_deck_state", return_value=deck),                 patch.object(utils, "_record_neutral_card"),                 patch.object(utils, "_move_and_click") as click:
+            utils.handle_card_assign(task)
+        return click, deck
+
+    def card_task(self, empty_deck=True):
+        task = empty_deck_task()
+        task.config["刷空档"] = empty_deck
+        task.default_config = {"刷存档主战员": ""}
+        task.all_texts = [SimpleNamespace(name="跳过", x=0.94 * 1280 - 20, y=0.93 * 720 - 10, width=40, height=20)]
+        task.click_box = lambda box: task.logs.append(f"click_{box.name}")
+        return task
+
+    def test_main_gets_no_card(self):
+        click, deck = self.assign(self.card_task())
+        click.assert_called_once()
+        self.assertAlmostEqual(click.call_args[0][2], 0.40)
+        self.assertEqual(deck, {})
+
+    def test_skip_when_only_main_can_take_it(self):
+        task = self.card_task()
+        click, _ = self.assign(task, unavailable=(0, 1))
+        click.assert_not_called()
+        self.assertIn("click_跳过", task.logs)
+
+    def test_normal_run_still_prefers_main(self):
+        click, deck = self.assign(self.card_task(empty_deck=False))
+        self.assertAlmostEqual(click.call_args[0][2], 0.70)
+        self.assertIn("记忆：丧失", deck)
+
+
 class TestMainAvatarFromDeck(unittest.TestCase):
     """選卡頁改用所有牌堆頁靠名字找到的主練主戰員卡來認主練：同一張圖實測 0.998、別人 0.22。
     （舊的刷存檔主戰員頭像比對把長得像的羅斯薇瑟認成麗塔，3 局 15 次移除全刪到羅斯薇瑟。）"""
