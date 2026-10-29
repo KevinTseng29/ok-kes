@@ -274,6 +274,37 @@ def _write_local_profiles(task, data):
         return False
 
 
+# 实验模式的配置才有的字段：原本存在共用清单里、带这些字段的配置是实验模式存的
+_EXPERIMENTAL_PROFILE_MARKERS = {"chaos": ("预设卡组",), "sortie": ("命运优先级", "检索优先级")}
+
+
+def _profile_bucket(task, mode):
+    """实验模式的本地配置另存一份清单。两边专属的卡牌设定不同（卡厄思实验版用预设卡组，一般版用闪光／复制卡牌列表），
+    共用清单交叉加载时，另一边专属的设定会留着上一个角色的。"""
+    return f"{mode}_experimental" if type(task).__name__.endswith("Experimental") else mode
+
+
+def _migrate_experimental_profiles(task, mode):
+    """实验模式第一次用自己的清单时，把共用清单里带实验模式专属字段的配置搬过来。"""
+    bucket = _profile_bucket(task, mode)
+    if bucket == mode:
+        return
+    data = _read_local_profiles(task)
+    if bucket in data:
+        return
+    shared = data.get(mode) if isinstance(data.get(mode), dict) else {}
+    markers = _EXPERIMENTAL_PROFILE_MARKERS.get(mode, ())
+    moved = {
+        name: profile for name, profile in shared.items()
+        if isinstance(profile, dict) and any(key in profile for key in markers)
+    }
+    data[bucket] = moved
+    if shared:
+        data[mode] = {name: profile for name, profile in shared.items() if name not in moved}
+    if _write_local_profiles(task, data) and moved:
+        task.log_info(f"实验模式的本地配置改存自己的清单，已搬移: {', '.join(moved)}")
+
+
 def _current_config_snapshot(task):
     """保存当前模式全部有效配置，不包含框架内部字段。"""
     snapshot = {}
@@ -333,6 +364,8 @@ def make_save_local_config_callback(task, mode):
     def save_local_config():
         from PySide6.QtWidgets import QInputDialog, QMessageBox
 
+        bucket = _profile_bucket(task, mode)
+        _migrate_experimental_profiles(task, mode)
         default_name = _default_local_profile_name(task, mode)
         proposed_name = default_name
         while True:
@@ -347,7 +380,7 @@ def make_save_local_config_callback(task, mode):
             profile_name = entered_name.strip() or default_name
 
             all_profiles = _read_local_profiles(task)
-            mode_profiles = all_profiles.get(mode)
+            mode_profiles = all_profiles.get(bucket)
             if not isinstance(mode_profiles, dict):
                 mode_profiles = {}
 
@@ -367,7 +400,7 @@ def make_save_local_config_callback(task, mode):
                     continue
 
             mode_profiles[profile_name] = _current_config_snapshot(task)
-            all_profiles[mode] = mode_profiles
+            all_profiles[bucket] = mode_profiles
             if _write_local_profiles(task, all_profiles):
                 QMessageBox.information(
                     None,
@@ -395,6 +428,8 @@ def make_switch_local_config_callback(task, mode):
             QVBoxLayout,
         )
 
+        bucket = _profile_bucket(task, mode)
+        _migrate_experimental_profiles(task, mode)
         dialog = QDialog()
         dialog.setWindowTitle("切换配置")
         dialog.resize(480, 360)
@@ -416,7 +451,7 @@ def make_switch_local_config_callback(task, mode):
 
         def reload_profile_list():
             profile_list.clear()
-            mode_profiles = _read_local_profiles(task).get(mode, {})
+            mode_profiles = _read_local_profiles(task).get(bucket, {})
             if not isinstance(mode_profiles, dict):
                 return
             for profile_name in mode_profiles:
@@ -435,7 +470,7 @@ def make_switch_local_config_callback(task, mode):
             profile_name = selected_profile_name()
             if not profile_name:
                 return
-            mode_profiles = _read_local_profiles(task).get(mode, {})
+            mode_profiles = _read_local_profiles(task).get(bucket, {})
             profile = mode_profiles.get(profile_name) if isinstance(mode_profiles, dict) else None
             if not isinstance(profile, dict):
                 QMessageBox.warning(dialog, "加载失败", "所选本地配置不存在或格式无效。")
@@ -463,10 +498,10 @@ def make_switch_local_config_callback(task, mode):
             if reply != QMessageBox.Yes:
                 return
             all_profiles = _read_local_profiles(task)
-            mode_profiles = all_profiles.get(mode, {})
+            mode_profiles = all_profiles.get(bucket, {})
             if isinstance(mode_profiles, dict):
                 mode_profiles.pop(profile_name, None)
-                all_profiles[mode] = mode_profiles
+                all_profiles[bucket] = mode_profiles
             if _write_local_profiles(task, all_profiles):
                 task.log_info(f"已删除本地配置: {profile_name}")
                 reload_profile_list()
