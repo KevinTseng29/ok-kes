@@ -1560,8 +1560,9 @@ def _scroll_card_page(task: TriggerTask, x, y, amount, page, distance=0.25):
             f"{page}: ADB从({x:.3f}, {y:.3f})滑动到({x:.3f}, {to_y:.3f})，"
             f"{direction}浏览卡牌"
         )
-        task.swipe_relative(x, y, x, to_y, duration=1, settle_time=1)
-        task.sleep(1)
+        # 原本滑 1 秒、等 1 秒再停 1 秒，翻一页要 3 秒、滑一下停一下很不像人；改成约 0.6 秒滑、停 0.6～0.8 秒，带一点随机
+        task.swipe_relative(x, y, x, to_y, duration=random.uniform(0.5, 0.7), settle_time=0.3)
+        task.sleep(random.uniform(0.3, 0.5))
     else:
         task.log_info(f"{page}: 在({x:.3f}, {y:.3f}){direction}滚动")
         task.move_relative(x, y)
@@ -3617,14 +3618,8 @@ def _scroll_to_target_member_for_card_removal(task: TriggerTask):
         if scroll_count >= max_scrolls:
             task.log_info(f"{page}: 向下滚动已达到{max_scrolls}次限制")
             return
-        _scroll_card_page(
-            task,
-            scroll_x,
-            scroll_y,
-            -3,
-            page,
-            distance=(search_region[3] - search_region[1]) / 4,
-        )
+        # 原本一次只滑四分之一（约 0.15 个画面），要停很多次；改成一次 0.3 个画面，头像高度不到这么多，不会滑过头
+        _scroll_card_page(task, scroll_x, scroll_y, -3, page, distance=0.30)
         scroll_count += 1
 
 
