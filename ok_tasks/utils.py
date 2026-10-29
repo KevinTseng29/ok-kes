@@ -369,16 +369,17 @@ def _check_empty_deck_done(task: TriggerTask):
 
 
 def _empty_deck_check_abandon(task: TriggerTask, remaining, complete):
-    """主练的移除次数用完还没删光（上限是每位战斗员各 5 次，全局 5 张不算：19:16 删到第 7 张还能删），
-    这局再打下去也删不到：标记删不完，下个路线页逃脱重来。路线页和商店数到张数时都会叫。"""
+    """主练剩下的移除次数不够删到目标（上限是每位战斗员各 5 次，全局 5 张不算：19:16 删到第 7 张还能删；
+    卡只会变多，23:40 已删 3 张还剩 3 张就注定删不完），这局再打下去也删不到：标记删不完，下个路线页逃脱重来。
+    路线页和商店数到张数时都会叫。"""
     status = task.node_status
     main_removed = status.get("main_removed_count", 0)
     if status.get("empty_deck_abandon") or not complete or remaining <= _empty_deck_target(task):
         return
-    if main_removed < _EMPTY_DECK_REMOVAL_CAP:
+    if remaining - _empty_deck_target(task) <= _EMPTY_DECK_REMOVAL_CAP - main_removed:
         return
     status["empty_deck_abandon"] = True
-    task.log_info(f"刷空档：主练已移除{main_removed}张（上限{_EMPTY_DECK_REMOVAL_CAP}），还剩{remaining}张，提早逃脱重来")
+    task.log_info(f"刷空档：主练已移除{main_removed}张（上限{_EMPTY_DECK_REMOVAL_CAP}），还剩{remaining}张删不完，提早逃脱重来")
     _journal(task, "刷空档", f"删不完：移除次数用完，主练还剩{remaining}张，逃脱重来")
 
 

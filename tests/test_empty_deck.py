@@ -66,9 +66,16 @@ class TestEmptyDeckDone(unittest.TestCase):
         self.assertTrue(handled)
         click.assert_called_once_with(task, 0.959, 0.053)
 
+    def test_abandon_when_removals_left_not_enough(self):
+        """還沒用完但不夠刪：主練已刪 3 張還剩 3 張，剩 2 次刪不完（卡只會變多），提早逃脫。"""
+        task = empty_deck_task(removed=3, main_removed=3)
+        self.check(task, {"__non_preset__": 3, "__section_complete__": True})
+        self.assertTrue(task.node_status["empty_deck_abandon"])
+
     def test_not_abandon_before_cap_or_unsure(self):
-        # 全局刪了 7 張但主練只被刪 4 張（上限是每位戰鬥員各 5 次，19:16 還能刪）；或段首張數讀不到
-        for removed, main_removed, counts in ((7, 4, {"__non_preset__": 2, "__section_complete__": True}),
+        # 全局刪了 7 張但主練只被刪 4 張、剩 1 張（上限是每位戰鬥員各 5 次，19:16 還能刪）；或段首張數讀不到
+        for removed, main_removed, counts in ((7, 4, {"__non_preset__": 1, "__section_complete__": True}),
+                                              (3, 3, {"__non_preset__": 2, "__section_complete__": True}),
                                               (5, 5, {"__non_preset__": 2, "__section_complete__": False})):
             task = empty_deck_task(removed=removed, main_removed=main_removed)
             self.check(task, counts)
