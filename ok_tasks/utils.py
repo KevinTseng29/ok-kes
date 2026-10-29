@@ -3030,7 +3030,11 @@ def reconcile_equipment(task: TriggerTask, live_qualities):
 
 
 def read_combatant_removed_count(task: TriggerTask):
-    """战斗员界面「移除 x/5」：修正本局已移除卡牌数（重启后计数会归零）。"""
+    """战斗员界面「移除 x/5」：修正本局已移除卡牌数（重启后计数会归零）。
+    这个次数是面板上那位战斗员的；面板不是主练就不改（18:44 面板是罗斯薇瑟，把主练已移除 2 张改成 0）。"""
+    main = _get_config_value(task, "刷存档主战员", "")
+    if not main or main not in _get_region_text(task, (0.14, 0.33, 0.34, 0.40)):
+        return
     row = [b for b in task.all_texts
            if 0.14 <= (b.x + b.width / 2) / task.width <= 0.40 and 0.65 <= (b.y + b.height / 2) / task.height <= 0.70]
     if not any("移除" in b.name for b in row):

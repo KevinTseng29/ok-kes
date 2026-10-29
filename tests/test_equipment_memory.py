@@ -167,8 +167,18 @@ class TestCombatantInventory(unittest.TestCase):
     def test_removed_count_from_panel(self):
         texts = [box("移除", 0.17, 0.66, 0.21, 0.69), box("3/5", 0.35, 0.66, 0.38, 0.69)]
         task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])], texts)
-        utils.read_combatant_removed_count(task)
+        with patch.object(utils, "_get_region_text", return_value="罗斯薇瑟"):
+            utils.read_combatant_removed_count(task)
         self.assertEqual(task.node_status["removed_card_count"], 3)
+
+    def test_removed_count_ignored_when_panel_is_other_member(self):
+        """面板是別的戰鬥員：「移除 x/5」是他的次數，不改主練的（18:44 把已移除 2 張改成 0）。"""
+        texts = [box("移除", 0.17, 0.66, 0.21, 0.69), box("0/5", 0.35, 0.66, 0.38, 0.69)]
+        task = FakeFrameTask([frame([LEGEND, EPIC, EPIC])], texts, node_status={"removed_card_count": 2},
+                             main="奥尔莱亚")
+        with patch.object(utils, "_get_region_text", return_value="罗斯薇瑟"):
+            utils.read_combatant_removed_count(task)
+        self.assertEqual(task.node_status["removed_card_count"], 2)
 
 
 if __name__ == "__main__":
