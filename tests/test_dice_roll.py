@@ -30,6 +30,12 @@ class TestDiceRoll(unittest.TestCase):
             self.assertTrue(utils.handle_dice_roll(t))  # 動畫中：不再點
         click.assert_called_once_with(t, 0.5, 0.45)
 
+    def test_event_option_with_dice_text_is_not_dice_page(self):
+        """事件選項「[口才]说明方向掷骰6成功时…」在畫面下方，不是擲骰頁（16:58 誤判點了畫面中間）。"""
+        with patch.object(utils, "_move_and_click") as click:
+            self.assertFalse(utils.handle_dice_roll(self.task([("[口才]说明方向", 0.86), ("掷骰6", 0.88)])))
+        click.assert_not_called()
+
     def test_other_page(self):
         with patch.object(utils, "_move_and_click") as click:
             self.assertFalse(utils.handle_dice_roll(self.task([("请选择你的命运", 0.93)])))

@@ -3747,8 +3747,9 @@ _DICE_CLICK_INTERVAL = 3  # 点完骰子等动画跑完再点
 
 def handle_dice_roll(task: TriggerTask):
     """事件技能检定（例如「[巧手]拯救两名士兵」）的掷骰页：上方技能名与数值、中间一颗骰子、下方「掷骰影响+N」，
-    要点中间的骰子才会继续。原本没有处理，每次卡 90 秒等守护回首页（2026-10-29 05:45、06:20）。"""
-    box = next((b for b in task.all_texts if "掷骰" in b.name
+    要点中间的骰子才会继续。原本没有处理，每次卡 90 秒等守护回首页（2026-10-29 05:45、06:20）。
+    要认「掷骰影响」：事件选项「[口才]说明方向掷骰6成功时…」也在画面下方，只认「掷骰」会把选项页当成掷骰页（16:58）。"""
+    box = next((b for b in task.all_texts if "掷骰影响" in b.name
                 and (b.y + b.height / 2) / task.height > 0.85), None)
     if box is None:
         return False
