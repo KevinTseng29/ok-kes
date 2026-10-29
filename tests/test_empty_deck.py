@@ -74,6 +74,14 @@ class TestEmptyDeckDone(unittest.TestCase):
             self.check(task, counts)
             self.assertFalse(task.node_status.get("empty_deck_abandon"), (removed, main_removed, counts))
 
+    def test_layer_change_keeps_empty_deck_state(self):
+        """刷空檔是整局的狀態：換層不能歸零（20:39 主練移除次數從 3 變 0，刪不完判斷不出來）。"""
+        task = empty_deck_task(removed=5, main_removed=3)
+        task.node_status.update(empty_deck_abandon=True, pass_final_boss_count=1)
+        utils.reset_layer_status(task)
+        self.assertEqual(task.node_status["main_removed_count"], 3)
+        self.assertTrue(task.node_status["empty_deck_abandon"])
+
     def test_main_removals_counted_on_confirm(self):
         task = empty_deck_task(removed=2, main_removed=2)
         task._pending_main_removals = 1

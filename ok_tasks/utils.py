@@ -5885,6 +5885,9 @@ def reset_layer_status(task: TriggerTask):
         task.node_status['removed_card_count'] = keep['removed_card_count']
         task.node_status['neutral_card_count'] = keep['neutral_card_count']
         task.node_status['arpeggio_divine'] = ns.get('arpeggio_divine', False)
+        # 刷空档是整局的状态：换层归零会让主练移除次数从 3 变 0（20:39），删不完也判断不出来
+        for key in ("main_removed_count", "empty_deck_done", "empty_deck_abandon"):
+            task.node_status[key] = ns.get(key, task.node_status.get(key))
 
 
 def handle_close_button(task: TriggerTask):
