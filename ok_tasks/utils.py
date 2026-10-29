@@ -3852,6 +3852,20 @@ def handle_convert_card(task: TriggerTask):
 _DICE_CLICK_INTERVAL = 3  # 点完骰子等动画跑完再点
 
 
+def handle_resume_dialog(task: TriggerTask):
+    """「卡厄思连线意外中断。是否要继续进行？」（出击是「有进行中的出击资讯，是否要继续进行？」）：按「继续进行」接回这一局。
+    原本没有处理，19:20 回首页后卡在这个对话框 8 分钟，回首页也救不回来。"""
+    if not any("是否要继续进行" in b.name or "连线意外中断" in b.name for b in task.all_texts):
+        return False
+    resume = next((b for b in task.all_texts if _clean_match(b.name, "继续进行")), None)
+    if resume is None:
+        return False
+    task.log_info("检测到「是否要继续进行」对话框，点击继续进行接回这一局")
+    task.click_box(resume)
+    task.sleep(2)
+    return True
+
+
 def handle_dice_roll(task: TriggerTask):
     """事件技能检定（例如「[巧手]拯救两名士兵」）的掷骰页：上方技能名与数值、中间一颗骰子、下方「掷骰影响+N」，
     要点中间的骰子才会继续。原本没有处理，每次卡 90 秒等守护回首页（2026-10-29 05:45、06:20）。

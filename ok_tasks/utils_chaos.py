@@ -10,7 +10,7 @@ from utils import (
     handle_card_reward, handle_equipment,
     handle_select_card, handle_copy_card_choice, handle_copy_member,
     handle_convert_card,
-    handle_negotiation, handle_dice_roll, handle_continue, handle_confirm, handle_enter,
+    handle_negotiation, handle_dice_roll, handle_resume_dialog, handle_continue, handle_confirm, handle_enter,
     handle_event_task, handle_route_selection, handle_obtain_reward,
     handle_leave, handle_next_step, handle_select, handle_rest, handle_view_original, handle_weakness_info,
     handle_close_button,
@@ -544,6 +544,14 @@ def handle_save_target_member(task: TriggerTask):
     if not target_name:
         return False
     if task.node_status.get("save_target_member", False):
+        return False
+    # 卡牌分配、选卡、确认框这类页面上方也看得到血量：别去点头像打断它们
+    # （19:20 重开后在卡牌分配页一边按跳过、一边点头像，来回 13 次被判原地打转、回首页后卡在「是否要继续进行」）
+    busy_words = ("跳过", "确认", "选择", "移除", "继续", "取消")
+    if any(
+        (b.y + b.height / 2) / task.height > 0.85 and any(word in b.name for word in busy_words)
+        for b in task.all_texts
+    ):
         return False
 
     task.log_info("前往获取刷存档主战员头像特征")
@@ -1526,6 +1534,7 @@ PAGE_HANDLERS = [
     handle_discovery_select,
     handle_negotiation,
     handle_dice_roll,  # 事件技能检定的掷骰页
+    handle_resume_dialog,  # 连线中断／有进行中的出击：「是否要继续进行？」按继续进行
     handle_chaos_reward_settlement, #卡厄思奖励结算页面，优先级高于继续按钮
     handle_chaos_reward_claim, #卡厄思模式奖励领取页面
     handle_go_to_memory_end, #卡厄思结算页面右下角「前往记忆之末」按钮
