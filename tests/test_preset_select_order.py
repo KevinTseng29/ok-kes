@@ -123,6 +123,14 @@ class TestSelectCardInOrder(unittest.TestCase):
         self.assertEqual(state["clicked"], [])
 
 
+class TestMergeNameCounts(unittest.TestCase):
+    def test_flash_page_count_keeps_other_cards(self):
+        """閃光頁只數這一頁那張卡：併進主練牌組記錄，不把其他卡蓋掉（總覽的主練牌組跑掉）。"""
+        task = SimpleNamespace(_preset_name_counts={"明滅劍": 1, "劍之共鳴": 3, "光之劍路": 1})
+        preset_deck._merge_name_counts(task, {"明灭剑": 2})
+        self.assertEqual(task._preset_name_counts, {"劍之共鳴": 3, "光之劍路": 1, "明灭剑": 2})
+
+
 class TestMisreadFlashPageNames(unittest.TestCase):
     def test_uses_card_just_selected(self):
         """16:09 選了明滅劍，閃光頁三張卡名讀成「剑（闪击)」「派剑」：沿用剛選的卡名，照效果選閃擊那張。"""

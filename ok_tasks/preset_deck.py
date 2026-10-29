@@ -1274,9 +1274,20 @@ def _read_deck_counts(task, groups):
 
     task._preset_deck_cache = best
     task._preset_deck_cache_time = time.time()
-    task._preset_name_counts = name_counts
+    _merge_name_counts(task, name_counts)
     _rebuild_meditation_pending(task, list(all_cards.values()), best)
     return best
+
+
+def _merge_name_counts(task, counts):
+    """把这次读到的卡名张数并进主练牌组记录（运行总览显示用）。闪光页只数这一页那张卡，
+    整份换掉会把其他卡的记录盖成 0（16:40 总览的主练牌组跑掉）；同一张卡的旧写法（繁简、读歪）先拿掉免得重复加。"""
+    merged = dict(getattr(task, "_preset_name_counts", None) or {})
+    for name, count in (counts or {}).items():
+        for key in [key for key in merged if _name_matches(key, name)]:
+            merged.pop(key)
+        merged[name] = count
+    task._preset_name_counts = merged
 
 
 # ---------------------------------------------------------------------------
@@ -1620,7 +1631,7 @@ def _read_deck_name_counts(task, names, targets):
     if not saw_any_card:
         task.log_warning("预设卡组: 牌组页面没有识别到卡牌，跳过复制")
         return None
-    task._preset_name_counts = counts
+    _merge_name_counts(task, counts)
     _rebuild_meditation_pending(task, list(all_cards.values()))
     return counts
 
