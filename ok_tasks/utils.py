@@ -3581,6 +3581,11 @@ def handle_equipment(task: TriggerTask):
 
         if is_purchase_page:
             task.log_info("购买装备无法分配给任何主战员，点击「取消」")
+            unassignable = getattr(task, "_shop_unassignable", None)
+            if not isinstance(unassignable, set):
+                unassignable = task._shop_unassignable = set()
+            if getattr(task, "_shop_last_equipment", ""):
+                unassignable.add(task._shop_last_equipment)  # 同一个商店不再买它
             task.click_box(cancel_box)
             task.sleep(1)
             return True
@@ -4483,6 +4488,7 @@ def handle_route_selection(task: TriggerTask):
             task.node_status['enter_new_node'] = False
             task.node_status['node_count'] += 1
             task.node_status['precision_memory_visited'] = False
+            task._shop_unassignable = set()  # 换节点了，下一个商店再试
             task.log_info(f"离开路线选择页面，当前节点计数: {task.node_status['node_count']}")
         return False
 
@@ -5337,12 +5343,18 @@ def handle_shop(task: TriggerTask):
                 )
                 continue
 
+            if not is_card and item_name in getattr(task, "_shop_unassignable", set()):
+                # 20:17 非典型方块分配不了→取消→回商店又买，来回 6 次被判原地打转
+                task.log_info(f"德朗商店: 装备「{item_name}」刚才分配不了任何主战员，这次不买")
+                continue
             task.log_info(
             f"德朗商店: {item_type}「{item_name}」命中配置「{matched_name}」，"
             f"价格{price}小于当前信用点{current_credit}，点击信用点图标"
             )
             task.click_box(credit_icon)
             task.sleep(1)
+            if not is_card:
+                task._shop_last_equipment = item_name
             if is_card and preset_name and preset_module:
                 preset_module._bump_name_count(task, preset_name)
                 preset_module._invalidate_deck_cache(task)
