@@ -262,6 +262,30 @@ class TestInitialEventTransition(unittest.TestCase):
         click.assert_called_once_with(task, 0.959, 0.053)
 
 
+class TestEmptyDeckSkipsCardRewards(unittest.TestCase):
+    """刷空檔：戰鬥後獎勵頁正亮著「未顯現的靈光一閃」或「記憶殘片」就按跳過，這兩項會多出卡牌；信用點照領。"""
+
+    def page(self, fixture):
+        task = empty_deck_task()
+        task.frame = cv2.imread(os.path.join(ROOT, "tests", "fixtures", "reward", fixture))
+
+        def box(name, x, y):
+            return SimpleNamespace(name=name, x=x * 1280 - 30, y=y * 720 - 10, width=60, height=20)
+
+        task.all_texts = [box("未显现的灵光一闪", 0.82, 0.224), box("记忆残片", 0.89, 0.351),
+                          box("信用点数", 0.89, 0.453), box("跳过", 0.74, 0.917)]
+        task.click_box = lambda b: task.logs.append(f"click_{b.name}")
+        with patch.object(utils, "find_box_at_point", return_value=box("获得", 0.93, 0.917)):
+            self.assertTrue(utils.handle_obtain_reward(task))
+        return task
+
+    def test_skip_flash_reward(self):
+        self.assertIn("click_跳过", self.page("flash_highlighted.jpg").logs)
+
+    def test_take_credits(self):
+        self.assertIn("click_获得", self.page("credit_highlighted.jpg").logs)
+
+
 class TestMainAvatarFromDeck(unittest.TestCase):
     """選卡頁改用所有牌堆頁靠名字找到的主練主戰員卡來認主練：同一張圖實測 0.998、別人 0.22。
     （舊的刷存檔主戰員頭像比對把長得像的羅斯薇瑟認成麗塔，3 局 15 次移除全刪到羅斯薇瑟。）"""

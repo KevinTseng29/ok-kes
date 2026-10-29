@@ -4772,10 +4772,49 @@ def handle_route_selection(task: TriggerTask):
     return True
 
 
+_EMPTY_DECK_SKIP_REWARDS = ("灵光一闪", "靈光一閃", "记忆残片", "記憶殘片")
+
+
+def _empty_deck_reward_to_skip(task: TriggerTask):
+    """刷空档：获得奖励页正亮着的那项是「未显现的灵光一闪」或「记忆残片」就回传它的文字框。
+    两项都会多出卡牌（23:36 连拍：记忆残片是「获得卡牌」；领了灵光一闪后丽塔的牌堆多一张），主练删不完。"""
+    frame = getattr(task, "frame", None)
+    if not _empty_deck_enabled(task) or frame is None:
+        return None
+    height, width = frame.shape[:2]
+    for box in task.all_texts:
+        cx = (box.x + box.width / 2) / task.width
+        cy = (box.y + box.height / 2) / task.height
+        if cx < 0.72 or not 0.12 <= cy <= 0.70:
+            continue
+        if not any(keyword in box.name for keyword in _EMPTY_DECK_SKIP_REWARDS):
+            continue
+        # 正亮着的那项是浅蓝底（这条 B 平均约 245），其余深灰（90 以下）
+        strip = frame[int((cy - 0.01) * height):int((cy + 0.01) * height), int(0.78 * width):int(0.98 * width)]
+        if strip.size and strip[..., 0].mean() >= 180:
+            return box
+    return None
+
+
 def handle_obtain_reward(task: TriggerTask):
     """获得奖励页面: 点击领取。若此时 reach_final_boss 为 True，说明已通关关底boss，过层+1并重置层状态。"""
     box = find_box_at_point(task, 0.924, 0.922)
     if box and _clean_match(box.name, "获得"):
+        reward = _empty_deck_reward_to_skip(task)
+        skip_box = reward and next(
+            (
+                b for b in task.all_texts
+                if "跳过" in b.name
+                and 0.55 <= (b.x + b.width / 2) / task.width <= 0.82
+                and (b.y + b.height / 2) / task.height >= 0.85
+            ),
+            None,
+        )
+        if skip_box:
+            task.log_info(f"刷空档：奖励「{reward.name}」会多出卡牌，点击跳过")
+            task.click_box(skip_box)
+            task.sleep(1)
+            return True
         task.log_info("检测到获得奖励页面，点击领取")
         task.click_box(box)
         task.sleep(1)
