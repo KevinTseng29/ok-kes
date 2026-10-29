@@ -1745,6 +1745,8 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             f"{target_member.confidence:.4f}，中心Y={target_y:.4f}"
         )
         keep = _empty_deck_keep_names(task)  # 实验卡厄思：预设卡组的卡不删
+        if _empty_deck_enabled(task) and main_removals_full(target_y):
+            return False
         before = selected
         clicked = click_cards(
             cards,
@@ -1763,21 +1765,6 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
         2026-10-29 选卡页实测（目标主战员头像特征中心 y＝t）：同一排卡牌中心 y≈t+0.08、x＝0.355／0.521／0.687／0.853；
         主战员卡右下「移除 x/5」在 y≈t+0.24，左边段首张数在 y≈t-0.045。"""
         nonlocal selected
-        status = getattr(task, "node_status", None)
-        removed_text = next((
-            b.name for b in task.all_texts
-            if 0.14 <= (b.x + b.width / 2) / task.width <= 0.22
-            and t_close((b.y + b.height / 2) / task.height, target_y + 0.24, 0.05)
-            and re.fullmatch(r"\s*\d\s*/\s*5\s*", b.name)
-        ), None)
-        if removed_text and isinstance(status, dict):
-            main_removed = int(re.match(r"\s*(\d)", removed_text).group(1))
-            status["main_removed_count"] = main_removed  # 画面上主练自己的移除次数为准
-            if main_removed >= _EMPTY_DECK_REMOVAL_CAP:
-                task.log_info(f"{page}: 主练移除次数已满（{removed_text.strip()}），这次不删别人的卡，下个路线页逃脱重来")
-                status["empty_deck_abandon"] = True
-                task._empty_deck_cancel_removal = True
-                return False
         card_y = target_y + 0.08
         if not 0.12 <= card_y <= 0.86:
             return False
@@ -1803,6 +1790,27 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
 
     def t_close(value, target, tolerance):
         return abs(value - target) <= tolerance
+
+    def main_removals_full(target_y):
+        """读主练队员卡右下的「移除 x/5」（画面为准，自己累计的会漏：20:06 记成 1 次、画面已是 4/5）；
+        满了就标记删不完、这次取消，回传 True。"""
+        status = getattr(task, "node_status", None)
+        removed_text = next((
+            b.name for b in task.all_texts
+            if 0.14 <= (b.x + b.width / 2) / task.width <= 0.22
+            and t_close((b.y + b.height / 2) / task.height, target_y + 0.24, 0.05)
+            and re.fullmatch(r"\s*\d\s*/\s*5\s*", b.name)
+        ), None)
+        if not removed_text or not isinstance(status, dict):
+            return False
+        main_removed = int(re.match(r"\s*(\d)", removed_text).group(1))
+        status["main_removed_count"] = main_removed
+        if main_removed < _EMPTY_DECK_REMOVAL_CAP:
+            return False
+        task.log_info(f"{page}: 主练移除次数已满（{removed_text.strip()}），这次不删别人的卡，下个路线页逃脱重来")
+        status["empty_deck_abandon"] = True
+        task._empty_deck_cancel_removal = True
+        return True
 
     def sync_visible_selected(cards):
         nonlocal selected
