@@ -1768,7 +1768,9 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
         card_y = target_y + 0.08
         if not 0.12 <= card_y <= 0.86:
             return False
-        taken = [c["x"] for c in cards if c.get("selected") and abs(c["y"] - card_y) <= 0.1]
+        # 卡牌的 y 是卡名的位置（比卡位中心高约 0.16），和上面点主练同排卡用同一个范围判断；
+        # 20:25 用 card_y 比，没认出刚点过的「各位，攻击吧」，又点一次反而取消选取，张数还多算
+        taken = [c["x"] for c in cards if c.get("selected") and abs(c["y"] - target_y) <= 0.25]
         clicked = False
         for slot_x in (0.355, 0.521, 0.687, 0.853):
             if selected >= count:
