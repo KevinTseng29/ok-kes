@@ -337,8 +337,15 @@ def _check_empty_deck_done(task: TriggerTask):
         task, [], prefer_base=False, extra_names=_empty_deck_keep_names(task), count_others=True
     )
     if not isinstance(counts, dict) or "__non_preset__" not in counts:
-        task.log_info("刷空档：读不到主练牌堆，下次移除后再数")
+        # 主练移除次数满了就不会再有「下次移除」（21:05 读失败后一直没再数，刪不完也逃不了）：下个路线页再试，最多 2 次
+        task._empty_deck_read_failures = getattr(task, "_empty_deck_read_failures", 0) + 1
+        if task._empty_deck_read_failures <= 2:
+            task._empty_deck_checked_removed = None
+            task.log_info("刷空档：读不到主练牌堆，下个路线页再数")
+        else:
+            task.log_info("刷空档：读不到主练牌堆，等下次移除后再数")
         return True
+    task._empty_deck_read_failures = 0
     remaining = counts["__non_preset__"]
     target = _empty_deck_target(task)
     complete = counts.get("__section_complete__")
@@ -348,13 +355,7 @@ def _check_empty_deck_done(task: TriggerTask):
     )
     if not (remaining <= target and complete):
         task._empty_deck_low_reads = 0
-        main_removed = status.get("main_removed_count", 0)
-        if complete and main_removed >= _EMPTY_DECK_REMOVAL_CAP:
-            # 主练的移除次数用完还没删光（上限是每位战斗员各 5 次，全局 5 张不算：19:16 删到第 7 张还能删），
-            # 这局再打下去也删不到，提早逃脱重来
-            status["empty_deck_abandon"] = True
-            task.log_info(f"刷空档：主练已移除{main_removed}张（上限{_EMPTY_DECK_REMOVAL_CAP}），还剩{remaining}张，提早逃脱重来")
-            _journal(task, "刷空档", f"删不完：移除次数用完，主练还剩{remaining}张，逃脱重来")
+        _empty_deck_check_abandon(task, remaining, complete)
         return True
     # 读错一次就会提早逃脱（19:00 刚删 2 张时读成剩 2 张，实际 4 张）：关掉牌堆重开再数一次，两次都达标才算
     task._empty_deck_low_reads = getattr(task, "_empty_deck_low_reads", 0) + 1
@@ -365,6 +366,20 @@ def _check_empty_deck_done(task: TriggerTask):
     status["empty_deck_done"] = True
     _journal(task, "刷空档", f"达成：主练预设卡组以外剩{remaining}张，逃脱")
     return True
+
+
+def _empty_deck_check_abandon(task: TriggerTask, remaining, complete):
+    """主练的移除次数用完还没删光（上限是每位战斗员各 5 次，全局 5 张不算：19:16 删到第 7 张还能删），
+    这局再打下去也删不到：标记删不完，下个路线页逃脱重来。路线页和商店数到张数时都会叫。"""
+    status = task.node_status
+    main_removed = status.get("main_removed_count", 0)
+    if status.get("empty_deck_abandon") or not complete or remaining <= _empty_deck_target(task):
+        return
+    if main_removed < _EMPTY_DECK_REMOVAL_CAP:
+        return
+    status["empty_deck_abandon"] = True
+    task.log_info(f"刷空档：主练已移除{main_removed}张（上限{_EMPTY_DECK_REMOVAL_CAP}），还剩{remaining}张，提早逃脱重来")
+    _journal(task, "刷空档", f"删不完：移除次数用完，主练还剩{remaining}张，逃脱重来")
 
 
 def _record_removed_cards(task: TriggerTask, count=1):
@@ -5093,6 +5108,7 @@ def _try_shop_removal(task, removal_targets, prefer_base):
     if _empty_deck_enabled(task) and isinstance(remaining_counts, dict) and "__non_preset__" in remaining_counts:
         all_targets_removed = remaining_counts["__non_preset__"] <= _empty_deck_target(task)
         task.log_info(f"刷空档：主练预设卡组以外剩{remaining_counts['__non_preset__']}张")
+        _empty_deck_check_abandon(task, remaining_counts["__non_preset__"], remaining_counts.get("__section_complete__"))
     if cost_box and cost_box.name.isdigit():
         cost = int(cost_box.name)
         if all_targets_removed:
@@ -5860,6 +5876,7 @@ def reset_mission_status(task: TriggerTask):
     task._memory_engrave_leave_count = 0
     task._empty_deck_checked_removed = None
     task._empty_deck_low_reads = 0
+    task._empty_deck_read_failures = 0
     task._pending_main_removals = 0
 
 

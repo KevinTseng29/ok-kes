@@ -74,6 +74,14 @@ class TestEmptyDeckDone(unittest.TestCase):
             self.check(task, counts)
             self.assertFalse(task.node_status.get("empty_deck_abandon"), (removed, main_removed, counts))
 
+    def test_read_failure_retries_on_next_route_page(self):
+        """主練次數滿了就不會再有下次移除：讀失敗要在下個路線頁再數（最多 2 次），刪不完才逃得掉。"""
+        task = empty_deck_task(removed=6, main_removed=5)
+        self.check(task, None)
+        _, read, _ = self.check(task, {"__non_preset__": 1, "__section_complete__": True})
+        read.assert_called_once()
+        self.assertTrue(task.node_status["empty_deck_abandon"])
+
     def test_layer_change_keeps_empty_deck_state(self):
         """刷空檔是整局的狀態：換層不能歸零（20:39 主練移除次數從 3 變 0，刪不完判斷不出來）。"""
         task = empty_deck_task(removed=5, main_removed=3)
