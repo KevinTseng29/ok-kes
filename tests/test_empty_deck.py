@@ -231,6 +231,37 @@ class TestEmptyDeckCardAssign(unittest.TestCase):
         self.assertIn("记忆：丧失", deck)
 
 
+class TestInitialEventTransition(unittest.TestCase):
+    """刷空檔：選完開局「移除2張」後的過場（「持燈之人啊，千萬別回頭。」）只有一個選項，
+    不能當成沒刷到就點選單（23:01 刪完 2 張就逃脫了）。"""
+
+    def event_page(self, task, descriptions):
+        options = [{"description": d, "x": 0.5, "y": 0.95, "feature": "event4"} for d in descriptions]
+        task.find_feature = lambda **_: []
+        task.find_one = lambda **_: None
+        task.box_of_screen = lambda *_: None
+        with patch.object(utils, "find_box_at_point", return_value=None),                 patch.object(utils, "recognize_event_options", return_value=options),                 patch.object(utils, "_move_and_click") as click:
+            handled = utils.handle_event_task(task)
+        return handled, click
+
+    def test_transition_page_waits(self):
+        task = empty_deck_task(removed=0)
+        task.node_status.update(pass_final_boss_count=0, node_count=0)
+        with patch.object(utils.time, "time", return_value=1000.0):
+            handled, click = self.event_page(task, ["持灯之人啊，千万别回头。"])
+        self.assertTrue(handled)
+        click.assert_not_called()
+        with patch.object(utils.time, "time", return_value=1007.0):
+            handled, click = self.event_page(task, ["持灯之人啊，千万别回头。"])
+        click.assert_called_once_with(task, 0.959, 0.053)
+
+    def test_opening_without_removal_rerolls(self):
+        task = empty_deck_task(removed=0)
+        task.node_status.update(pass_final_boss_count=0, node_count=0)
+        handled, click = self.event_page(task, ["献上赞美", "接受祝福最大HP20%增加", "选择痛苦HP30%减少"])
+        click.assert_called_once_with(task, 0.959, 0.053)
+
+
 class TestMainAvatarFromDeck(unittest.TestCase):
     """選卡頁改用所有牌堆頁靠名字找到的主練主戰員卡來認主練：同一張圖實測 0.998、別人 0.22。
     （舊的刷存檔主戰員頭像比對把長得像的羅斯薇瑟認成麗塔，3 局 15 次移除全刪到羅斯薇瑟。）"""

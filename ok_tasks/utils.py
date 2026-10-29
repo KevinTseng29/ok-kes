@@ -4234,6 +4234,20 @@ def handle_equipment_recast(task: TriggerTask):
     return False
 
 
+def _wait_initial_event_transition(task: TriggerTask, wait=5, stale=20):
+    """开局事件页只有一个选项时先等 wait 秒；同一页停更久才照常重来。
+    上次记的时间超过 stale 秒就是别局留下的，重新计时。"""
+    now = time.time()
+    since = getattr(task, "_initial_event_single_since", None)
+    if since is None or now - since > stale:
+        task._initial_event_single_since = now
+        return True
+    if now - since <= wait:
+        return True
+    task._initial_event_single_since = None
+    return False
+
+
 def handle_event_task(task: TriggerTask):
     """事件任务页面: 识别事件选项特征和描述，按任务优先级选择推进。"""
     bottom_box = find_box_at_point(task, 0.516, 0.971)
@@ -4388,11 +4402,18 @@ def handle_event_task(task: TriggerTask):
             None,
         )
         if matched_task:
+            task._initial_event_single_since = None
             task.log_info(
                 f"{purpose}：选择包含“{description_keyword}”的事件任务"
             )
             click_event_option(matched_task)
+        elif len(tasks_info) < 2 and _wait_initial_event_transition(task):
+            # 选完开局事件后的过场（「持灯之人啊，千万别回头。」）也像事件页、只有一个选项，
+            # 不是开局三选一：等它过去（23:01 当成没刷到点了选单，删完 2 张就逃脱了）
+            task.log_info(f"{purpose}：事件页只有一个选项，像是选完后的过场，等下一帧")
+            return True
         else:
+            task._initial_event_single_since = None
             task.log_info(
                 f"{purpose}：未找到包含“{description_keyword}”的事件任务，"
                 "点击ESC重新开始"
