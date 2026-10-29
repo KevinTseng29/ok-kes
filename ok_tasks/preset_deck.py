@@ -1410,7 +1410,25 @@ def _choose_preset_card(task, cards):
     for card in cards:
         _card_has_big_divine(task, card)
 
-    card_name = _card_name(cards[0])
+    # 三张都是同一张卡的变体，但卡名常被读歪（16:09「明灭剑 (闪击)」读成「剑（闪击)」「派剑」）：哪张对得上就用哪张；
+    # 都对不上、而刚在选卡页点过卡（60 秒内），这页闪的就是那张，沿用它的卡名
+    card_name = next(
+        (
+            _card_name(card) for card in cards
+            if any(_name_matches(record.get("name", ""), _card_name(card)) for record in records)
+        ),
+        None,
+    )
+    hint = getattr(task, "_last_selected_card", None)
+    task._last_selected_card = None
+    if card_name is None and hint and time.time() - hint[1] < 60 and any(
+        _name_matches(record.get("name", ""), hint[0]) for record in records
+    ):
+        task.log_info(f"预设卡组: 本页卡名读歪了，沿用刚才选的「{hint[0]}」")
+        card_name = hint[0]
+        for card in cards:
+            card["name"] = hint[0]
+    card_name = card_name or _card_name(cards[0])
     name_records = [
         record for record in records if _name_matches(record.get("name", ""), card_name)
     ]

@@ -1866,6 +1866,8 @@ def _select_card_in_order(task: TriggerTask, card_names, action, matches):
     def click(card, target_rank):
         task.log_info(f"{page}: 照顺序选「{card_names[target_rank]}」，点击「{card['name']}」")
         _journal(task, f"{action}卡牌", card["name"])
+        # 接着的闪光页卡名常读歪，preset_deck._choose_preset_card 读不到时沿用这张
+        task._last_selected_card = (card_names[target_rank], time.time())
         _move_and_click(task, card["x"], card["y"])
         task.sleep(0.3)
         return True

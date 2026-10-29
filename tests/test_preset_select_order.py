@@ -123,6 +123,25 @@ class TestSelectCardInOrder(unittest.TestCase):
         self.assertEqual(state["clicked"], [])
 
 
+class TestMisreadFlashPageNames(unittest.TestCase):
+    def test_uses_card_just_selected(self):
+        """16:09 選了明滅劍，閃光頁三張卡名讀成「剑（闪击)」「派剑」：沿用剛選的卡名，照效果選閃擊那張。"""
+        from collections import defaultdict
+        task = preset_task()
+        task._last_selected_card = ("明灭剑", time.time())
+        cards = [{"name": "派剑", "description": "造成480%的伤害"},
+                 {"name": "剑（闪击)", "description": "分裂时分裂为片鳞：暗(闪击)"},
+                 {"name": "派剑", "description": "赋予目标痛苦"}]
+        with patch.object(preset_deck, "load_preset_records", return_value=RECORDS), \
+                patch.object(preset_deck, "_ensure_three_cards", side_effect=lambda _t, c: c), \
+                patch.object(preset_deck, "_card_has_big_divine", return_value=False), \
+                patch.object(preset_deck, "_read_deck_counts", return_value=defaultdict(int)), \
+                patch.object(preset_deck, "_bump_name_count"):
+            choice = preset_deck._choose_preset_card(task, cards)
+        self.assertIs(choice, cards[1])
+        self.assertIsNone(task._last_selected_card)
+
+
 class TestEnsureThreeCards(unittest.TestCase):
     def card(self, x):
         return {"name": "光之剑路", "x": x, "description": "造成240%的伤害",
