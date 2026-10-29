@@ -286,6 +286,69 @@ def _remember_removal_remaining(task: TriggerTask, cards):
     task._removal_remaining_counts = remaining
 
 
+# 刷空档开局要避开的地图词条（赛季卡厄思初始页星球卡上列的）
+_EMPTY_DECK_AVOID_AFFIXES = ("在安全区域无法休息",)
+
+
+def _empty_deck_enabled(task: TriggerTask):
+    """实验卡厄思勾了「刷空档」：主练预设卡组以外的卡删到剩「刷空档剩余张数」张（预设 0）就逃脱，留下空档存档。"""
+    return bool(getattr(task, "preset_deck_enabled", False)) and _get_config_value(task, "刷空档", False) is True
+
+
+def _empty_deck_target(task: TriggerTask):
+    try:
+        return max(0, int(_get_config_value(task, "刷空档剩余张数", 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _empty_deck_keep_names(task: TriggerTask):
+    """刷空档时不删的卡：预设卡组里的卡名。"""
+    if not _empty_deck_enabled(task):
+        return []
+    try:
+        import preset_deck as preset_module
+        records = preset_module.load_preset_records(task) or []
+    except Exception:
+        return []
+    return list(dict.fromkeys(str(r.get("name", "")).strip() for r in records if str(r.get("name", "")).strip()))
+
+
+def _check_empty_deck_done(task: TriggerTask):
+    """刷空档：到路线页时，这局又移除过卡就数一次主练牌堆；预设卡组以外剩下的张数达标就逃脱。
+    已达成却还在路线页（逃脱选单没开成）就再按一次右上角。回传 True 表示这一帧处理过了。"""
+    if not _empty_deck_enabled(task):
+        return False
+    status = task.node_status
+    if status.get("empty_deck_done"):
+        task.log_info("刷空档已达成，点右上角选单准备逃脱")
+        _move_and_click(task, 0.959, 0.053)
+        task.sleep(1)
+        return True
+    removed = status.get("removed_card_count", 0)
+    if not removed or removed == getattr(task, "_empty_deck_checked_removed", None):
+        return False
+    task._empty_deck_checked_removed = removed  # 读不到也等下次移除后再数，免得每帧开牌堆
+    import preset_deck as preset_module
+    counts = preset_module.read_removal_deck_counts(
+        task, [], prefer_base=False, extra_names=_empty_deck_keep_names(task), count_others=True
+    )
+    if not isinstance(counts, dict) or "__non_preset__" not in counts:
+        task.log_info("刷空档：读不到主练牌堆，下次移除后再数")
+        return True
+    remaining = counts["__non_preset__"]
+    target = _empty_deck_target(task)
+    complete = counts.get("__section_complete__")
+    task.log_info(
+        f"刷空档：已移除{removed}张，主练预设卡组以外剩{remaining}张（目标≤{target}），"
+        + ("主练整段都在画面里" if complete else "没看到下一位主战员，可能还有没数到的")
+    )
+    if remaining <= target and complete:
+        status["empty_deck_done"] = True
+        _journal(task, "刷空档", f"达成：主练预设卡组以外剩{remaining}张，逃脱")
+    return True
+
+
 def _record_removed_cards(task: TriggerTask, count=1):
     """记录本局实际完成移除的卡牌数量。"""
     node_status = getattr(task, "node_status", None)
@@ -302,7 +365,7 @@ def _record_removed_cards(task: TriggerTask, count=1):
     if isinstance(remaining, dict):
         for name in pending_names:
             for key in list(remaining):
-                if key.startswith("__basic"):
+                if key.startswith("__"):
                     continue
                 if _removal_name_match(key, name):
                     remaining[key] = max(0, remaining[key] - 1)
@@ -315,7 +378,7 @@ def _record_removed_cards(task: TriggerTask, count=1):
     if isinstance(deck_remaining, dict):
         for name in pending_names:
             for key in list(deck_remaining):
-                if key.startswith("__basic"):
+                if key.startswith("__"):
                     continue
                 if _removal_name_match(key, name):
                     deck_remaining[key] = max(0, deck_remaining[key] - 1)
@@ -1658,9 +1721,11 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             f"{page}: 刷空档找到目标主战员，相似度="
             f"{target_member.confidence:.4f}，中心Y={target_y:.4f}"
         )
+        keep = _empty_deck_keep_names(task)  # 实验卡厄思：预设卡组的卡不删
         return click_cards(
             cards,
-            lambda card: abs(card["y"] - target_y) <= 0.25,
+            lambda card: abs(card["y"] - target_y) <= 0.25
+            and not any(_removal_name_match(name, card.get("name", "")) for name in keep),
             "刷空档优先移除目标主战员同排卡牌，点击",
         )
 
@@ -2376,7 +2441,8 @@ def _journal(task: TriggerTask, kind, detail):
 RUN_PROGRESS_FILE = os.path.join("logs", "run_progress.json")
 RUN_PROGRESS_MAX_AGE = 30 * 60  # 超过这么久没更新的存档当成别局的，不还原
 _RUN_PROGRESS_KEYS = ("pass_final_boss_count", "get_specific_flash", "node_count", "removed_card_count",
-                      "neutral_card_count", "arpeggio_divine", "reach_final_boss", "final_boss_battle")
+                      "neutral_card_count", "arpeggio_divine", "reach_final_boss", "final_boss_battle",
+                      "empty_deck_done")
 
 
 def save_run_progress(task: TriggerTask):
@@ -4312,6 +4378,9 @@ def handle_route_selection(task: TriggerTask):
         if inventory_after_restart(task):
             return True
 
+    if _check_empty_deck_done(task):
+        return True
+
     # 是路线选择页面，标记进入新节点
     if hasattr(task, 'node_status'):
         task.node_status['enter_new_node'] = True
@@ -4897,6 +4966,9 @@ def _try_shop_removal(task, removal_targets, prefer_base):
             for key in required_keys
         )
     )
+    if _empty_deck_enabled(task) and isinstance(remaining_counts, dict) and "__non_preset__" in remaining_counts:
+        all_targets_removed = remaining_counts["__non_preset__"] <= _empty_deck_target(task)
+        task.log_info(f"刷空档：主练预设卡组以外剩{remaining_counts['__non_preset__']}张")
     if cost_box and cost_box.name.isdigit():
         cost = int(cost_box.name)
         if all_targets_removed:
@@ -5530,6 +5602,10 @@ def handle_expedition_result(task: TriggerTask):
         if _get_config_value(task, '只打第一层', False) and task.node_status.get('pass_final_boss_count', 0) >= 1: # 完成第一层任务
             succeeded = True
             task.log_info("卡厄思模式探险结果: 成功")
+        elif task.node_status.get('empty_deck_done'):  # 刷空档达成后逃脱：要的就是这份空档存档
+            succeeded = True
+            task.node_status['success_rounds'] += 1
+            task.log_info("卡厄思模式探险结果: 成功（刷空档达成后逃脱）")
         elif not _get_config_value(task, '只打第一层', False) and not task.node_status.get('is_escaped', 0): # 完成了任务且没有逃脱
             succeeded = True
             task.node_status['success_rounds'] += 1
@@ -5555,7 +5631,7 @@ def _initial_node_status():
             "node_count": 0, "enter_new_node": False, "node_type": "", "is_escaped": False,
             "save_target_member": False, "target_mask_card_position": -1,
             "get_specific_flash": False, "removed_card_count": 0,
-            "neutral_card_count": 0}
+            "neutral_card_count": 0, "empty_deck_done": False}
 
 
 def _initial_member_status():
@@ -5644,6 +5720,7 @@ def reset_mission_status(task: TriggerTask):
     task._removal_deck_counts = None
     task._removal_deck_counts_time = 0
     task._memory_engrave_leave_count = 0
+    task._empty_deck_checked_removed = None
 
 
 def reset_layer_status(task: TriggerTask):

@@ -1068,8 +1068,10 @@ def inventory_after_restart(task):
     return True
 
 
-def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=None):
-    """从所有牌堆读取移除目标/基础牌数量；可顺便读预设卡名数量。"""
+def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=None, count_others=False):
+    """从所有牌堆读取移除目标/基础牌数量；可顺便读预设卡名数量。
+    另外回传 __non_preset__（主练这一段里不是 extra_names 的卡有几张）和 __section_complete__
+    （看得到下一位主战员的图标＝主练整段都在这一屏）；刷空档用来判断删光了没有。"""
     targets = list(
         dict.fromkeys(
             str(name).strip()
@@ -1084,7 +1086,7 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
             if str(name).strip()
         )
     )
-    if not targets and not prefer_base and not extra_names:
+    if not targets and not prefer_base and not extra_names and not count_others:
         return {}
     if not _open_all_decks_from_any_page(task):
         task.log_warning("预设卡组: 无法从当前页面打开所有牌堆")
@@ -1093,6 +1095,8 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
     counts = {name: 0 for name in targets}
     extra_counts = {name: 0 for name in extra_names}
     basic_count = 0
+    non_preset_count = 0
+    section_complete = False
     base_card_type = _get_game_text(task, "基础")
     try:
         task.sleep(0.5)
@@ -1125,6 +1129,11 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                         if base_card_type in card.get("type", "")
                     ),
                 )
+            non_preset_count = sum(
+                1 for card in filtered
+                if not any(_name_matches(name, _card_name(card)) for name in extra_names)
+            )
+            section_complete = reached_next
             if reached_next:
                 break
             # 目标段如果没有结束图标，当前首屏读完即可，宁少算不多算。
@@ -1136,6 +1145,8 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
     result.update(extra_counts)
     if prefer_base:
         result["__basic__"] = basic_count
+    result["__non_preset__"] = non_preset_count
+    result["__section_complete__"] = section_complete
     task.log_info(
         f"预设卡组: 所有牌堆移除/预设目标数量={result}"
     )

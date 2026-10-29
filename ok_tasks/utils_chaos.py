@@ -28,6 +28,7 @@ from utils import (
 from navigation import handle_chaos_navigation
 from dialogue import mark_battle
 from utils import stop_if_round_finished
+from utils import _EMPTY_DECK_AVOID_AFFIXES, _empty_deck_enabled
 import guard
 
 from preset_deck import (
@@ -243,6 +244,19 @@ def handle_season_chaos_initial_page(task: TriggerTask):
         return True
     task._chaos_kind = "赛季卡厄思"  # 目录记录来源用
     value_text = _get_region_text(task, (0.684, 0.308, 0.982, 0.754))
+    if _get_config_value(task, "刷空档", False) is True:
+        # 刷空档只看地图词条（要靠篝火休息撑到删完，不能有「在安全区域无法休息」），不看存储数据保存上限
+        compact_text = re.sub(r"\s+", "", value_text)
+        avoided = next((affix for affix in _EMPTY_DECK_AVOID_AFFIXES if affix in compact_text), None)
+        if not avoided:
+            task.log_info("刷空档：地图词条没有要避开的，不看存储数据保存上限，直接进入")
+            return False
+        task.log_info(f"刷空档：地图词条有「{avoided}」，点击再次观测")
+        guard.clear_click_record(task)
+        task._last_change_time = time.time()
+        task.click_box(observe_boxes[0])
+        task.sleep(1)
+        return True
     value_match = _match_storage_data_value(task, value_text)
     if not value_match:
         task.log_info(f"未识别到存储数据价值层级，区域文本=「{value_text}」")
@@ -282,6 +296,9 @@ def handle_zero_system_initial_page(task: TriggerTask):
     if stop_if_round_finished(task):
         return True
     task._chaos_kind = "零号系统"  # 目录记录来源用
+    if _get_config_value(task, "刷空档", False) is True:
+        task.log_info("刷空档：不看存储数据保存上限，直接进入")
+        return False
     value_text = _get_region_text(task, (0.685, 0.317, 0.980, 0.825))
     value_match = _match_storage_data_value(task, value_text)
     required_level = int(
@@ -317,6 +334,13 @@ def handle_disable_adaptation_distortion(task: TriggerTask):
     if adaptation_text not in page_text:
         return False
 
+    toggle_on, knob, middle = _top_right_toggle_on(task)
+    if toggle_on:
+        task.log_info(f"刷空档检测到右上角开关已开启（圆钮RGB={knob}，轨道RGB={middle}），点击关闭")
+        _move_and_click(task, 0.94, 0.046)
+        task.sleep(1)
+        return True
+
     relative_x, relative_y = 0.575, 0.093
     pixel_x = min(task.width - 1, max(0, round(relative_x * task.width)))
     pixel_y = min(task.height - 1, max(0, round(relative_y * task.height)))
@@ -340,6 +364,25 @@ def handle_disable_adaptation_distortion(task: TriggerTask):
     _move_and_click(task, relative_x, relative_y)
     task.sleep(1)
     return False
+
+
+# 配置队伍页右上角的开关（紫色星球图示）：关闭时右半段是淡灰色空轨道；开启时圆钮移到右边变白、中间变暗、整页变暗
+_TOP_RIGHT_TOGGLE_KNOB_ON = (0.961, 0.046)
+_TOP_RIGHT_TOGGLE_MIDDLE = (0.9375, 0.046)
+
+
+def _top_right_toggle_on(task: TriggerTask):
+    def rgb(point):
+        x = min(task.width - 1, max(0, round(point[0] * task.width)))
+        y = min(task.height - 1, max(0, round(point[1] * task.height)))
+        blue, green, red = (int(v) for v in task.frame[y, x, :3])
+        return red, green, blue
+
+    knob, middle = rgb(_TOP_RIGHT_TOGGLE_KNOB_ON), rgb(_TOP_RIGHT_TOGGLE_MIDDLE)
+    # 实测：关闭 knob=(200,201,202)、middle=(48,21,140)；开启 knob=(252,242,255)、middle=(20,11,47)
+    knob_bright = min(knob) >= 225 and knob[2] >= knob[1]
+    middle_dark = sum(middle) <= 150
+    return knob_bright and middle_dark, knob, middle
 
 
 def _save_runtime_feature(task: TriggerTask, feature_name: str, region, target_region=None):
@@ -934,6 +977,10 @@ def handle_data_collected(task: TriggerTask):
         task.log_info("保留大于多少TB的存档设置为0，保留全部存档")
         return False
     if node_status is None:
+        return False
+    if _get_config_value(task, '刷空档', False) is True:
+        # 刷空档要的是空档存档，提早逃脱的存档价值通常很低，照 TB 门槛会被删掉
+        task.log_info("刷空档：不照存档TB门槛删除，存档都保留")
         return False
 
     # 二次确认弹窗已经出现时不再点垃圾桶，交给通用确认按钮处理
