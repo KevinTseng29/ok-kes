@@ -3570,10 +3570,14 @@ def handle_select_card(task: TriggerTask):
     config_key = _SELECT_CARD_CONFIG_KEYS.get(action)
     if config_key is None:
         return False
-    task.log_info(f"检测到卡牌{action}选择，需选择{count}张，配置key={config_key}")
+    task.log_info(f"检测到卡牌{action}选择（标题「{box.name}」），需选择{count}张，配置key={config_key}")
 
     # 日志打印右下角选牌操作提示
     action_tip = find_box_at_point(task, 0.945, 0.918)
+    # 事件送的神闪（光之资料）：选卡页右下角只写「选择」，选完接着是三个全神闪、不能跳过的页面
+    divine_select = action in ("闪光", "灵光") and (
+        "神" in box.name or bool(action_tip and action_tip.name.strip() == "选择")
+    )
     if action_tip:
         task.log_info(f"右下角选牌操作提示: 「{action_tip.name}」")
         if "再次灵光" in action_tip.name:
@@ -3587,7 +3591,7 @@ def handle_select_card(task: TriggerTask):
     ):
         _scroll_to_target_member_for_card_removal(task)
 
-    preset_names = _preset_select_names(task, action)
+    preset_names = _preset_select_names(task, action, divine_select)
     if preset_names is not None:
         # 实验模式有预设卡组：要闪、要复制哪张由预设卡组决定（不再看闪光卡牌列表、复制卡牌列表），整个列表照顺序找
         task.log_info(f"预设卡组: {action}选卡照预设卡组顺序找 {preset_names}")
@@ -3600,6 +3604,18 @@ def handle_select_card(task: TriggerTask):
             result = bool(preset_names) and select_card(task, preset_names, count=count, action=action)
         if result:
             return True
+        if divine_select and count == 1:
+            # 神闪选卡没有跳过：要的卡都不在，就挑一张没勾拒绝神闪的
+            rejected = preset_module.preset_reject_divine_names(task)
+            task.all_texts = _simplify_texts(task.ocr())
+            cards = recognize_cards_in_deck(task, page=f"select_card-{action}")
+            card = next((c for c in cards if c["name"] and not any(
+                preset_module._name_matches(name, c["name"]) for name in rejected)), None)
+            if card is not None:
+                task.log_info(f"神闪选卡：预设卡组要的卡都没找到，改选没勾拒绝神闪的「{card['name']}」")
+                _journal(task, f"{action}卡牌", card["name"])
+                _move_and_click(task, card["x"], card["y"])
+                return True
         return _click_select_card_skip(task, action, "预设卡组里要的卡都没找到")
 
     card_list = _get_card_list(task, config_key)
@@ -3616,13 +3632,14 @@ def handle_select_card(task: TriggerTask):
     return result
 
 
-def _preset_select_names(task: TriggerTask, action):
-    """实验模式选卡页要找的卡名（已转简体、照优先顺序）；不是预设卡组模式或不是灵光/闪光/复制回传 None。"""
+def _preset_select_names(task: TriggerTask, action, divine=False):
+    """实验模式选卡页要找的卡名（已转简体、照优先顺序）；不是预设卡组模式或不是灵光/闪光/复制回传 None。
+    divine：这一页选的卡接着会被神闪（事件送的），勾了拒绝神闪的卡不选。"""
     if action not in ("闪光", "灵光", "复制") or not getattr(task, "preset_deck_enabled", False):
         return None
     try:
         import preset_deck as preset_module
-        names = preset_module.preset_select_names(task, action)
+        names = preset_module.preset_select_names(task, action, divine)
     except Exception as e:
         task.log_info(f"预设卡组: 取选卡顺序失败（{e}），改用旧清单")
         return None

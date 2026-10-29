@@ -52,6 +52,14 @@ class TestPresetSelectNames(unittest.TestCase):
         task = preset_task(counts={"明滅劍": 1, "劍之共鳴": 1, "光之劍路": 1})
         self.assertEqual(self.names(task, "复制"), ["劍之共鳴"])
 
+    def test_divine_select_skips_reject_divine(self):
+        """事件送的神閃（光之資料）：選卡頁不選勾了拒絕神閃的光之劍路（15:12 選了它被迫神閃）。"""
+        records = RECORDS[:1] + [dict(RECORDS[1], divine_text=["此卡牌費用减少1"])] + RECORDS[2:]
+        task = preset_task(pending=[("之剑路", "持續1回合自身傷害量增加15%")])
+        with patch.object(preset_deck, "load_preset_records", return_value=records):
+            self.assertEqual(preset_deck.preset_reject_divine_names(task), ["光之劍路"])
+            self.assertEqual(preset_deck.preset_select_names(task, "灵光", divine=True), ["劍之共鳴", "明滅劍"])
+
     def test_no_preset_falls_back(self):
         with patch.object(preset_deck, "load_preset_records", return_value=[]):
             self.assertIsNone(preset_deck.preset_select_names(preset_task(), "灵光"))

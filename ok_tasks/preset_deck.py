@@ -470,7 +470,16 @@ def _add_meditation_pending(task, name, current_effect, target_effect):
     )
 
 
-def preset_select_names(task, action):
+def preset_reject_divine_names(task):
+    """勾了「拒绝神闪」的卡名（同名记录全都拒绝才算）。"""
+    names = []
+    for name, group in _name_targets(load_preset_records(task) or [])[2].items():
+        if group and all(record.get("reject_divine") for record in group):
+            names.append(group[0]["name"])
+    return names
+
+
+def preset_select_names(task, action, divine=False):
     """选卡页（请选择…灵光/闪光/复制…卡牌）要找的卡名，照优先顺序；没有预设卡组回传 None（照旧用清单）。
     - 灵光一闪（含冥想）：先找待冥想的（效果还不对），再照预设卡组顺序。冥想的选卡页只列闪过的卡，
       待冥想的若还没闪过（原始效果）根本不在列表上，只找待冥想的会付了冥想费却没卡可选（14:49、14:53 白花 200 信用点）；
@@ -500,6 +509,12 @@ def preset_select_names(task, action):
                 return next((value for key, value in counts.items() if _name_matches(key, name)), 0)
             order = [name for name in order if have(name) < targets.get(_compact(name), 1)]
         return unique(order)
+    if divine:
+        # 事件送的神闪（光之资料：选 1 张卡，接着三个选项全是神闪、不能跳过）：勾了拒绝神闪的卡不选，
+        # 先选有填神闪效果的（15:12 选了光之剑路，被迫神闪）
+        rejected = preset_reject_divine_names(task)
+        wanted = [record["name"] for record in records if record.get("divine_text")] + order
+        return unique([name for name in wanted if not any(_name_matches(name, r) for r in rejected)])
     return unique(pending + order)
 
 
