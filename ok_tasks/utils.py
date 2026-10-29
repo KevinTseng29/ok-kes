@@ -288,6 +288,8 @@ def _remember_removal_remaining(task: TriggerTask, cards):
 
 # 刷空档开局要避开的地图词条（赛季卡厄思初始页星球卡上列的）
 _EMPTY_DECK_AVOID_AFFIXES = ("在安全区域无法休息",)
+# 每位战斗员一局最多被移除几张；刷空档时主练用完还没删光就提早逃脱重来
+_EMPTY_DECK_REMOVAL_CAP = 5
 
 
 def _empty_deck_enabled(task: TriggerTask):
@@ -320,8 +322,8 @@ def _check_empty_deck_done(task: TriggerTask):
     if not _empty_deck_enabled(task):
         return False
     status = task.node_status
-    if status.get("empty_deck_done"):
-        task.log_info("刷空档已达成，点右上角选单准备逃脱")
+    if status.get("empty_deck_done") or status.get("empty_deck_abandon"):
+        task.log_info("刷空档" + ("已达成" if status.get("empty_deck_done") else "删不完") + "，点右上角选单准备逃脱")
         _move_and_click(task, 0.959, 0.053)
         task.sleep(1)
         return True
@@ -346,6 +348,13 @@ def _check_empty_deck_done(task: TriggerTask):
     )
     if not (remaining <= target and complete):
         task._empty_deck_low_reads = 0
+        main_removed = status.get("main_removed_count", 0)
+        if complete and main_removed >= _EMPTY_DECK_REMOVAL_CAP:
+            # 主练的移除次数用完还没删光（上限是每位战斗员各 5 次，全局 5 张不算：19:16 删到第 7 张还能删），
+            # 这局再打下去也删不到，提早逃脱重来
+            status["empty_deck_abandon"] = True
+            task.log_info(f"刷空档：主练已移除{main_removed}张（上限{_EMPTY_DECK_REMOVAL_CAP}），还剩{remaining}张，提早逃脱重来")
+            _journal(task, "刷空档", f"删不完：移除次数用完，主练还剩{remaining}张，逃脱重来")
         return True
     # 读错一次就会提早逃脱（19:00 刚删 2 张时读成剩 2 张，实际 4 张）：关掉牌堆重开再数一次，两次都达标才算
     task._empty_deck_low_reads = getattr(task, "_empty_deck_low_reads", 0) + 1
@@ -367,6 +376,10 @@ def _record_removed_cards(task: TriggerTask, count=1):
     node_status["removed_card_count"] = (
         node_status.get("removed_card_count", 0) + count
     )
+    main_removed = min(count, getattr(task, "_pending_main_removals", 0) or 0)
+    if main_removed:
+        node_status["main_removed_count"] = node_status.get("main_removed_count", 0) + main_removed
+    task._pending_main_removals = 0
     pending_names = getattr(task, "_pending_removed_card_names", None) or []
     pending_features = getattr(task, "_pending_removed_card_features", None) or []
     pending_basics = getattr(task, "_pending_removed_card_basics", None) or []
@@ -1732,12 +1745,16 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             f"{target_member.confidence:.4f}，中心Y={target_y:.4f}"
         )
         keep = _empty_deck_keep_names(task)  # 实验卡厄思：预设卡组的卡不删
-        return click_cards(
+        before = selected
+        clicked = click_cards(
             cards,
             lambda card: abs(card["y"] - target_y) <= 0.25
             and not any(_removal_name_match(name, card.get("name", "")) for name in keep),
             "刷空档优先移除目标主战员同排卡牌，点击",
         )
+        # 移除上限是每位战斗员各 5 次，刷空档要算主练自己的（按下移除时 _record_removed_cards 才记）
+        task._pending_main_removals = getattr(task, "_pending_main_removals", 0) + (selected - before)
+        return clicked
 
     def sync_visible_selected(cards):
         nonlocal selected
@@ -1917,6 +1934,7 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             task.log_info(f"{page}: 未找到足够卡牌，点击「{button_name}」")
             task.click_box(button)
             if action == "移除":
+                task._pending_main_removals = 0
                 task._pending_removed_card_count = 0
                 task._pending_removed_card_names = []
                 task._pending_removed_card_features = []
@@ -2467,7 +2485,7 @@ RUN_PROGRESS_FILE = os.path.join("logs", "run_progress.json")
 RUN_PROGRESS_MAX_AGE = 30 * 60  # 超过这么久没更新的存档当成别局的，不还原
 _RUN_PROGRESS_KEYS = ("pass_final_boss_count", "get_specific_flash", "node_count", "removed_card_count",
                       "neutral_card_count", "arpeggio_divine", "reach_final_boss", "final_boss_battle",
-                      "empty_deck_done")
+                      "empty_deck_done", "empty_deck_abandon", "main_removed_count")
 
 
 def save_run_progress(task: TriggerTask):
@@ -4969,6 +4987,8 @@ def _try_shop_removal(task, removal_targets, prefer_base):
 
     current_credit = _get_current_credit(task)
     removed_card_count = task.node_status.get("removed_card_count", 0)
+    if _empty_deck_enabled(task):
+        removed_card_count = task.node_status.get("main_removed_count", 0)  # 上限是每位战斗员各 5 次
     cost_box = find_box_at_point(task, 0.724, 0.319)
     task.log_info(
         f"handle_shop: 移除卡牌费用={cost_box.name if cost_box else None}，"
@@ -5661,7 +5681,8 @@ def _initial_node_status():
             "node_count": 0, "enter_new_node": False, "node_type": "", "is_escaped": False,
             "save_target_member": False, "target_mask_card_position": -1,
             "get_specific_flash": False, "removed_card_count": 0,
-            "neutral_card_count": 0, "empty_deck_done": False}
+            "neutral_card_count": 0, "empty_deck_done": False, "empty_deck_abandon": False,
+            "main_removed_count": 0}
 
 
 def _initial_member_status():
@@ -5752,6 +5773,7 @@ def reset_mission_status(task: TriggerTask):
     task._memory_engrave_leave_count = 0
     task._empty_deck_checked_removed = None
     task._empty_deck_low_reads = 0
+    task._pending_main_removals = 0
 
 
 def reset_layer_status(task: TriggerTask):

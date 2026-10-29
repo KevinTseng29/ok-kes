@@ -23,10 +23,12 @@ RECORDS = [{"name": "明滅劍", "effects": [], "divine_text": [], "reject_divin
            {"name": "劍之共鳴", "effects": [], "divine_text": [], "reject_divine": False}]
 
 
-def empty_deck_task(removed=3, **config):
+def empty_deck_task(removed=3, main_removed=None, **config):
     task = SimpleNamespace(preset_deck_enabled=True, width=1280, height=720, logs=[],
                            config={"刷空档": True, **config},
-                           node_status={"removed_card_count": removed, "empty_deck_done": False})
+                           node_status={"removed_card_count": removed, "empty_deck_done": False,
+                                        "empty_deck_abandon": False,
+                                        "main_removed_count": removed if main_removed is None else main_removed})
     task.log_info = lambda message, notify=False: task.logs.append(message)
     task.sleep = lambda *_: None
     return task
@@ -53,6 +55,33 @@ class TestEmptyDeckDone(unittest.TestCase):
         handled, read, _ = self.check(task, done_counts)  # 同一個移除數也要再數一次
         read.assert_called_once()
         self.assertTrue(task.node_status["empty_deck_done"])
+
+    def test_abandon_when_removals_used_up(self):
+        """主練自己的移除次數用完（5 張）還有剩：這局刪不到，提早逃脫重來（記失敗，不是達成）。"""
+        task = empty_deck_task(removed=7, main_removed=5)
+        self.check(task, {"__non_preset__": 2, "__section_complete__": True})
+        self.assertTrue(task.node_status["empty_deck_abandon"])
+        self.assertFalse(task.node_status["empty_deck_done"])
+        handled, _, click = self.check(task, {})
+        self.assertTrue(handled)
+        click.assert_called_once_with(task, 0.959, 0.053)
+
+    def test_not_abandon_before_cap_or_unsure(self):
+        # 全局刪了 7 張但主練只被刪 4 張（上限是每位戰鬥員各 5 次，19:16 還能刪）；或段首張數讀不到
+        for removed, main_removed, counts in ((7, 4, {"__non_preset__": 2, "__section_complete__": True}),
+                                              (5, 5, {"__non_preset__": 2, "__section_complete__": False})):
+            task = empty_deck_task(removed=removed, main_removed=main_removed)
+            self.check(task, counts)
+            self.assertFalse(task.node_status.get("empty_deck_abandon"), (removed, main_removed, counts))
+
+    def test_main_removals_counted_on_confirm(self):
+        task = empty_deck_task(removed=2, main_removed=2)
+        task._pending_main_removals = 1
+        utils._record_removed_cards(task, 1)
+        self.assertEqual(task.node_status["main_removed_count"], 3)
+        utils._record_removed_cards(task, 1)  # 不是從主練那一排點的
+        self.assertEqual(task.node_status["main_removed_count"], 3)
+        self.assertEqual(task.node_status["removed_card_count"], 4)
 
     def test_second_read_disagrees(self):
         task = empty_deck_task()
