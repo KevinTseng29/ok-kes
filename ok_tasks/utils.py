@@ -1752,9 +1752,57 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             and not any(_removal_name_match(name, card.get("name", "")) for name in keep),
             "刷空档优先移除目标主战员同排卡牌，点击",
         )
+        if selected < count and _empty_deck_enabled(task):
+            clicked = click_main_row_slots(cards, target_y, keep) or clicked
         # 移除上限是每位战斗员各 5 次，刷空档要算主练自己的（按下移除时 _record_removed_cards 才记）
         task._pending_main_removals = getattr(task, "_pending_main_removals", 0) + (selected - before)
         return clicked
+
+    def click_main_row_slots(cards, target_y, keep):
+        """刷空档（实验卡厄思）：主练的橘框卡（神圣香炉、促进成长…）卡牌特征认不到，照卡位直接点。
+        2026-10-29 选卡页实测（目标主战员头像特征中心 y＝t）：同一排卡牌中心 y≈t+0.08、x＝0.355／0.521／0.687／0.853；
+        主战员卡右下「移除 x/5」在 y≈t+0.24，左边段首张数在 y≈t-0.045。"""
+        nonlocal selected
+        status = getattr(task, "node_status", None)
+        removed_text = next((
+            b.name for b in task.all_texts
+            if 0.14 <= (b.x + b.width / 2) / task.width <= 0.22
+            and t_close((b.y + b.height / 2) / task.height, target_y + 0.24, 0.05)
+            and re.fullmatch(r"\s*\d\s*/\s*5\s*", b.name)
+        ), None)
+        if removed_text and isinstance(status, dict):
+            main_removed = int(re.match(r"\s*(\d)", removed_text).group(1))
+            status["main_removed_count"] = main_removed  # 画面上主练自己的移除次数为准
+            if main_removed >= _EMPTY_DECK_REMOVAL_CAP:
+                task.log_info(f"{page}: 主练移除次数已满（{removed_text.strip()}），这次不删别人的卡，下个路线页逃脱重来")
+                status["empty_deck_abandon"] = True
+                task._empty_deck_cancel_removal = True
+                return False
+        card_y = target_y + 0.08
+        if not 0.12 <= card_y <= 0.86:
+            return False
+        taken = [c["x"] for c in cards if c.get("selected") and abs(c["y"] - card_y) <= 0.1]
+        clicked = False
+        for slot_x in (0.355, 0.521, 0.687, 0.853):
+            if selected >= count:
+                break
+            if any(abs(slot_x - x) < 0.06 for x in taken):
+                continue
+            name = _get_region_text(task, (slot_x - 0.07, card_y - 0.18, slot_x + 0.08, card_y - 0.13)).strip()
+            if not name:
+                break  # 这一格没有卡，后面也不会有
+            if any(_removal_name_match(keep_name, name) for keep_name in keep):
+                continue
+            task.log_info(f"{page}: 刷空档照卡位点主练的卡「{name}」（x={slot_x:.3f}）")
+            _move_and_click(task, slot_x, card_y)
+            task.sleep(0.3)
+            selected += 1
+            record_pending_removal(name)
+            clicked = True
+        return clicked
+
+    def t_close(value, target, tolerance):
+        return abs(value - target) <= tolerance
 
     def sync_visible_selected(cards):
         nonlocal selected
@@ -1908,7 +1956,10 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
             )
             if selected >= count:
                 return True
-        if main_row_only and selected < count:
+        if main_row_only and selected < count and getattr(task, "_empty_deck_cancel_removal", False):
+            task._empty_deck_cancel_removal = False
+            task.log_info(f"{page}: 刷空档主练移除次数已满，取消这次移除")
+        elif main_row_only and selected < count:
             task.log_info(f"{page}: 刷空档整个列表都没找到主练那一排，退回删基础牌")
             click_cards(
                 sorted(cards, key=lambda card: (card["y"], card["x"]), reverse=True),
