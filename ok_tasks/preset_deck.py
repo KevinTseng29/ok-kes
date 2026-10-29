@@ -935,6 +935,31 @@ def _target_member_y(task):
     return None
 
 
+def _filter_deck_section(task, cards, icon_tops, target_y):
+    """所有牌堆页每位主战员一段：左边是主战员卡（下方有名字），右边是他的卡。主练名字上方最近的牌堆图标是段首，
+    名字下方第一个图标是下一段。回传 (这一段的卡, 是否看到下一段, 段首 y)。"""
+    height = task.height or 1
+    top = max((y for y in icon_tops if y < target_y), default=max(0.0, target_y - 0.33))
+    next_icon = next((y for y in icon_tops if y > target_y + 0.04), None)
+    end = next_icon - 0.03 if next_icon is not None else 1.0
+    filtered = [
+        card for card in cards
+        if card.get("feature_box") is not None and top - 0.02 <= card["feature_box"].y / height < end
+    ]
+    return filtered, next_icon is not None, top
+
+
+def _deck_section_header_count(task, top):
+    """段首牌堆图标下方的数字就是这位主战员的卡牌张数（2026-10-29 实测罗斯薇瑟那段写「06」、正好 6 张）。"""
+    for box in task.all_texts:
+        center_x = (box.x + box.width / 2) / (task.width or 1)
+        center_y = (box.y + box.height / 2) / (task.height or 1)
+        text = (getattr(box, "name", "") or "").strip()
+        if 0.09 <= center_x <= 0.14 and top < center_y <= top + 0.09 and text.isdigit() and len(text) <= 2:
+            return int(text)
+    return None
+
+
 def _filter_deck_by_member_icon(task, cards, icon_tops, target_y):
     """用主战员图标截断：目标主战员名字下方第一个图标就是下一段。"""
     if not icon_tops:
@@ -1095,21 +1120,27 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
     counts = {name: 0 for name in targets}
     extra_counts = {name: 0 for name in extra_names}
     basic_count = 0
-    non_preset_count = 0
+    non_preset_count = None
     section_complete = False
     base_card_type = _get_game_text(task, "基础")
     try:
         task.sleep(0.5)
-        for _ in range(10):
+        for step in range(8):
             task.all_texts = _simplify_texts(task.ocr())
-            cards = recognize_cards_in_deck(task, page=_DECK_PAGE_NAME)
-            if not cards:
-                break
-            icon_tops = _deck_member_icon_tops(task)
             target_y = _target_member_y(task)
-            filtered, reached_next = _filter_deck_by_member_icon(
-                task, cards, icon_tops, target_y
-            )
+            # 主练不一定排第一段（2026-10-29 主练奥尔莱亚排在罗斯薇瑟后面，之前一直数到罗斯薇瑟）：
+            # 画面上还没有主练名字、或名字太靠下（卡被切掉）就往下翻
+            if target_y is None or target_y > 0.75:
+                if step == 7 or _point_is_white(task, 0.982, 0.925, _DECK_PAGE_NAME):
+                    task.log_info("预设卡组: 所有牌堆里找不到主练那一段")
+                    break
+                _scroll_card_page(task, 0.620, 0.560, -1, _DECK_PAGE_NAME, distance=0.18)
+                task.sleep(0.45)
+                continue
+            cards = recognize_cards_in_deck(task, page=_DECK_PAGE_NAME)
+            icon_tops = _deck_member_icon_tops(task)
+            filtered, reached_next, section_top = _filter_deck_section(task, cards, icon_tops, target_y)
+            header_count = _deck_section_header_count(task, section_top)
             for name in targets:
                 count = sum(
                     1 for card in filtered if _name_matches(name, _card_name(card))
@@ -1129,24 +1160,32 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                         if base_card_type in card.get("type", "")
                     ),
                 )
-            non_preset_count = sum(
+            preset_seen = sum(
                 1 for card in filtered
-                if not any(_name_matches(name, _card_name(card)) for name in extra_names)
+                if any(_name_matches(name, _card_name(card)) for name in extra_names)
             )
-            section_complete = reached_next
-            if reached_next:
-                break
-            # 目标段如果没有结束图标，当前首屏读完即可，宁少算不多算。
+            if header_count is not None:
+                # 段首数字是主练全部张数：没看到的预设卡只会让剩下的张数算多，不会误判删光
+                non_preset_count = max(0, header_count - preset_seen)
+                section_complete = True
+            else:
+                non_preset_count = len(filtered) - preset_seen
+                section_complete = reached_next
+            # 目标段如果没有结束图标，当前这一屏读完即可，宁少算不多算。
             break
     finally:
         _close_all_decks_page(task)
 
+    if non_preset_count is None:
+        # 没找到主练那一段：回传读不到，别拿别人的段（或 0 张）去判断要不要移除
+        return None
     result = dict(counts)
     result.update(extra_counts)
     if prefer_base:
         result["__basic__"] = basic_count
-    result["__non_preset__"] = non_preset_count
-    result["__section_complete__"] = section_complete
+    if non_preset_count is not None:
+        result["__non_preset__"] = non_preset_count
+        result["__section_complete__"] = section_complete
     task.log_info(
         f"预设卡组: 所有牌堆移除/预设目标数量={result}"
     )

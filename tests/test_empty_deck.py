@@ -80,6 +80,32 @@ class TestEmptyDeckDone(unittest.TestCase):
         click.assert_called_once_with(task, 0.959, 0.053)
 
 
+class TestDeckSection(unittest.TestCase):
+    """所有牌堆頁：主練不一定排第一段，要找主練名字那一段；段首牌堆圖示下的數字就是張數。
+    座標取自 2026-10-29 實際截圖：段首圖示 y≈0.139、張數「06」在 (0.116, 0.183)、名字在 y≈0.464、下一段圖示 y≈0.972。"""
+
+    def box(self, name, cx, cy):
+        return SimpleNamespace(name=name, x=cx * 1280 - 10, y=cy * 720 - 8, width=20, height=16)
+
+    def card(self, y):
+        return {"name": "剑击", "feature_box": SimpleNamespace(x=600, y=y * 720, width=20, height=20)}
+
+    def test_header_count(self):
+        task = SimpleNamespace(width=1280, height=720,
+                               all_texts=[self.box("所有牌堆", 0.17, 0.05), self.box("17", 0.65, 0.05),
+                                          self.box("06", 0.116, 0.183)])
+        self.assertEqual(preset_deck._deck_section_header_count(task, 0.139), 6)
+        self.assertIsNone(preset_deck._deck_section_header_count(task, 0.60))
+
+    def test_section_excludes_previous_and_next_member(self):
+        task = SimpleNamespace(width=1280, height=720)
+        cards = [self.card(0.05), self.card(0.15), self.card(0.55), self.card(0.98)]
+        filtered, reached_next, top = preset_deck._filter_deck_section(task, cards, [0.02, 0.139, 0.972], 0.464)
+        self.assertEqual([c["feature_box"].y / 720 for c in filtered], [0.15, 0.55])
+        self.assertTrue(reached_next)
+        self.assertAlmostEqual(top, 0.139)
+
+
 class TestTopRightToggle(unittest.TestCase):
     """配置隊伍頁右上角開關：刷空檔要關著。"""
 
