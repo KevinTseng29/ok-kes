@@ -1743,22 +1743,30 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
         """刷空档时优先移除目标主战员同一排的卡牌。"""
         if not prefer_target_member_row or selected >= count:
             return False
-        if not task.feature_exists("target_member_in_select_card"):
-            return False
-        target_member = task.find_one(
-            feature_name="target_member_in_select_card",
-            box=target_member_box,
-            threshold=0.6,
-        )
-        if not target_member:
-            return False
-        target_y = (
-            target_member.y + target_member.height / 2
-        ) / task.height
-        task.log_info(
-            f"{page}: 刷空档找到目标主战员，相似度="
-            f"{target_member.confidence:.4f}，中心Y={target_y:.4f}"
-        )
+        main_avatar = _main_avatar_in_deck(task)
+        if main_avatar is not None:
+            # 实验卡厄思：用所有牌堆页靠名字认到的主练主战员卡比对（旧头像比对会把长得像的罗斯薇瑟当成麗塔）
+            target_y, score = _find_main_avatar_y(task, main_avatar)
+            if target_y is None:
+                return False
+            task.log_info(f"{page}: 刷空档用牌堆页的主练头像找到主练，相似度={score:.3f}，中心Y={target_y:.4f}")
+        else:
+            if not task.feature_exists("target_member_in_select_card"):
+                return False
+            target_member = task.find_one(
+                feature_name="target_member_in_select_card",
+                box=target_member_box,
+                threshold=0.6,
+            )
+            if not target_member:
+                return False
+            target_y = (
+                target_member.y + target_member.height / 2
+            ) / task.height
+            task.log_info(
+                f"{page}: 刷空档找到目标主战员，相似度="
+                f"{target_member.confidence:.4f}，中心Y={target_y:.4f}"
+            )
         keep = _empty_deck_keep_names(task)  # 实验卡厄思：预设卡组的卡不删
         if _empty_deck_enabled(task) and main_removals_full(target_y):
             return False
@@ -3698,11 +3706,46 @@ _SELECT_CARD_CONFIG_KEYS = {
 }
 
 
+_MAIN_AVATAR_MATCH = 0.85  # 同一张主战员卡图实测 0.998，长得像的别人（罗斯薇瑟比麗塔）0.22
+
+
+def _main_avatar_in_deck(task: TriggerTask):
+    """刷空档（实验卡厄思）：从所有牌堆页靠名字找到的主练主战员卡头像；没有回传 None。"""
+    if not _empty_deck_enabled(task):
+        return None
+    try:
+        import preset_deck as preset_module
+        return preset_module.load_main_avatar(task)
+    except Exception:
+        return None
+
+
+def _find_main_avatar_y(task: TriggerTask, template):
+    """选卡页找主练的主战员卡：回传换算成旧「刷存档主战员头像特征」中心的 y（卡位等相对位置照旧用），
+    认不到回传 (None, 分数)。"""
+    frame = getattr(task, "frame", None)
+    if frame is None or template is None:
+        return None, 0.0
+    height, width = frame.shape[:2]
+    y0, x0 = int(0.07 * height), int(0.05 * width)
+    region = frame[y0:int(0.92 * height), x0:int(0.26 * width), :3]
+    if region.shape[0] < template.shape[0] or region.shape[1] < template.shape[1]:
+        return None, 0.0
+    result = cv2.matchTemplate(region, template[..., :3], cv2.TM_CCOEFF_NORMED)
+    _, score, _, location = cv2.minMaxLoc(result)
+    if score < _MAIN_AVATAR_MATCH:
+        return None, float(score)
+    import preset_deck as preset_module
+    card_top = (location[1] + y0) / height - preset_module.MAIN_AVATAR_FACE_OFFSET
+    return card_top + 0.107, float(score)  # 旧特征中心约在主战员卡上缘下 0.107
+
+
 def _scroll_to_target_member_for_card_removal(task: TriggerTask):
     """移除卡牌前滚动成员列表，直到目标成员出现或到达底部。"""
     feature_name = "target_member_in_select_card"
     page = "移除卡牌目标主战员查找"
-    if not task.feature_exists(feature_name):
+    main_avatar = _main_avatar_in_deck(task)
+    if main_avatar is None and not task.feature_exists(feature_name):
         task.log_info(f"{page}: 尚未保存{feature_name}特征，跳过查找")
         return
 
@@ -3722,16 +3765,22 @@ def _scroll_to_target_member_for_card_removal(task: TriggerTask):
     max_scrolls = 20
     scroll_count = 0
     while True:
-        target_member = task.find_one(
-            feature_name=feature_name,
-            box=search_box,
-            threshold=0.5,
-        )
-        if target_member:
-            task.log_info(
-                f"{page}: 找到目标主战员，相似度={target_member.confidence:.4f}"
+        if main_avatar is not None:
+            found_y, score = _find_main_avatar_y(task, main_avatar)
+            if found_y is not None:
+                task.log_info(f"{page}: 用牌堆页的主练头像找到目标主战员，相似度={score:.3f}")
+                return
+        else:
+            target_member = task.find_one(
+                feature_name=feature_name,
+                box=search_box,
+                threshold=0.5,
             )
-            return
+            if target_member:
+                task.log_info(
+                    f"{page}: 找到目标主战员，相似度={target_member.confidence:.4f}"
+                )
+                return
         if single_page:
             task.log_info(f"{page}: 当前仅一页，未找到目标主战员")
             return

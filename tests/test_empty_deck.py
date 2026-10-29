@@ -185,6 +185,41 @@ class TestEmptyDeckSkipsFlash(unittest.TestCase):
         self.assertIn("click_skip", task.logs)
 
 
+class TestMainAvatarFromDeck(unittest.TestCase):
+    """選卡頁改用所有牌堆頁靠名字找到的主練主戰員卡來認主練：同一張圖實測 0.998、別人 0.22。
+    （舊的刷存檔主戰員頭像比對把長得像的羅斯薇瑟認成麗塔，3 局 15 次移除全刪到羅斯薇瑟。）"""
+
+    def frame_with(self, name, top, left=0):
+        image = cv2.imread(os.path.join(ROOT, "tests", "fixtures", "team", name))
+        frame = np.zeros((720, 1280, 3), np.uint8)
+        frame[top:top + image.shape[0], left:left + image.shape[1]] = image
+        return frame
+
+    def test_deck_avatar_finds_main_not_lookalike(self):
+        import tempfile
+        folder = tempfile.mkdtemp()
+        task = empty_deck_task(**{"刷存档主战员": "奥尔莱亚"})
+        with patch.object(preset_deck, "_MAIN_AVATAR_FILE", os.path.join(folder, "a.png")), \
+                patch.object(preset_deck, "_MAIN_AVATAR_NAME_FILE", os.path.join(folder, "a.txt")):
+            # 牌堆頁：奧爾萊亞的名字中心在 y≈0.65（素材貼在 180 列）
+            task.frame = self.frame_with("deck_section_header.png", 180)
+            preset_deck._save_main_avatar(task, 468 / 720)
+            avatar = preset_deck.load_main_avatar(task)
+            self.assertIsNotNone(avatar)
+            # 選卡頁：她的主戰員卡上緣在 y≈0.232，換算成舊特徵中心約 0.339
+            task.frame = self.frame_with("select_main_column.png", 100)
+            found_y, score = utils._find_main_avatar_y(task, avatar)
+            self.assertGreater(score, 0.95)
+            self.assertAlmostEqual(found_y, 0.339, delta=0.02)
+            # 長得不一樣的別人（羅斯薇瑟）認不到
+            task.frame = self.frame_with("deck_other_member.png", 60, left=-0)
+            found_y, score = utils._find_main_avatar_y(task, avatar)
+            self.assertIsNone(found_y)
+            # 換了刷存檔主戰員就不用舊的頭像
+            task.config["刷存档主战员"] = "丽塔"
+            self.assertIsNone(preset_deck.load_main_avatar(task))
+
+
 class TestTopRightToggle(unittest.TestCase):
     """配置隊伍頁右上角開關：刷空檔要關著。"""
 

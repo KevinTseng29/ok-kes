@@ -952,6 +952,55 @@ def _filter_deck_section(task, cards, icon_tops, target_y):
 _HEADER_COUNT_X = (0.09, 0.14)
 
 
+# 主练的主战员卡头像（从所有牌堆页靠名字找到的那一段裁下来）：选卡页的主战员卡是同一张图、同样大小，
+# 拿它来认主练比「刷存档主战员头像」可靠（麗塔和罗斯薇瑟同为黑发黄眼，旧头像比对把罗斯薇瑟认成主练，相似度 0.77）。
+# 实测同一人 0.998、别人 0.22。名字在主战员卡下方，卡片上缘约在名字上方 0.343，脸在上缘下 0.05～0.22
+_MAIN_AVATAR_FILE = os.path.join("configs", "main_avatar_in_deck.png")
+_MAIN_AVATAR_NAME_FILE = os.path.join("configs", "main_avatar_in_deck.txt")
+MAIN_AVATAR_FACE_OFFSET = 0.05  # 裁切范围从主战员卡上缘往下多少
+
+
+def _save_main_avatar(task, target_y):
+    frame = getattr(task, "frame", None)
+    top = target_y - 0.343
+    if frame is None or not hasattr(frame, "shape") or top < 0.07:
+        return
+    height, width = frame.shape[:2]
+    crop = frame[int((top + MAIN_AVATAR_FACE_OFFSET) * height):int((top + 0.22) * height),
+                 int(0.165 * width):int(0.255 * width)].copy()
+    if crop.size == 0:
+        return
+    main = _get_config_value(task, "刷存档主战员", "") or ""
+    task._main_avatar_template = crop
+    task._main_avatar_name = main
+    try:
+        cv2.imwrite(_MAIN_AVATAR_FILE, crop)
+        with open(_MAIN_AVATAR_NAME_FILE, "w", encoding="utf-8") as f:
+            f.write(main)
+    except Exception as exc:
+        task.log_info(f"预设卡组: 存主练头像失败：{exc}")
+
+
+def load_main_avatar(task):
+    """回传主练的主战员卡头像（存的是同一个刷存档主战员才用）；没有回传 None。"""
+    main = _get_config_value(task, "刷存档主战员", "") or ""
+    if getattr(task, "_main_avatar_name", None) == main and getattr(task, "_main_avatar_template", None) is not None:
+        return task._main_avatar_template
+    try:
+        with open(_MAIN_AVATAR_NAME_FILE, encoding="utf-8") as f:
+            saved_name = f.read().strip()
+    except OSError:
+        return None
+    if saved_name != main:
+        return None
+    template = _imread_unicode(_MAIN_AVATAR_FILE)
+    if template is None:
+        return None
+    task._main_avatar_template = template
+    task._main_avatar_name = main
+    return template
+
+
 def _deck_section_header_count(task, top):
     """段首牌堆图标下方的数字就是这位主战员的卡牌张数（2026-10-29 实测罗斯薇瑟那段写「06」、正好 6 张）。
     整张画面的 OCR 常漏掉这个小数字（奥尔莱亚那段的「02」没读到），没有就把那一小块放大 3 倍单独 OCR。"""
@@ -1183,6 +1232,7 @@ def read_removal_deck_counts(task, targets=None, prefer_base=True, extra_names=N
                     _scroll_card_page(task, 0.620, 0.600, -1, _DECK_PAGE_NAME, distance=0.30)
                     task.sleep(0.45)
                     continue
+            _save_main_avatar(task, target_y)
             cards = recognize_cards_in_deck(task, page=_DECK_PAGE_NAME)
             icon_tops = _deck_member_icon_tops(task)
             filtered, reached_next, section_top = _filter_deck_section(task, cards, icon_tops, target_y)
