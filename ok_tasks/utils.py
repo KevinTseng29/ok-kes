@@ -5034,10 +5034,12 @@ def _shop_read_removal_counts(task, removal_targets, prefer_base, extra_names=No
     extra_names = list(extra_names or [])
     remaining_counts = getattr(task, "_removal_deck_counts", None)
     deck_time = getattr(task, "_removal_deck_counts_time", 0)
+    # 读失败后 2 分钟内不再开牌堆（21:27 主练那段找不到，商店每帧都重开牌堆翻到底，一次 20 秒）
+    recently_failed = time.time() - getattr(task, "_removal_deck_failed_time", 0) < 120
     if (
         not isinstance(remaining_counts, dict)
         or time.time() - deck_time > 30
-    ):
+    ) and not recently_failed:
         deck_counts = None
         try:
             import preset_deck as preset_module
@@ -5054,6 +5056,8 @@ def _shop_read_removal_counts(task, removal_targets, prefer_base, extra_names=No
                     name: int(deck_counts.get(name, 0)) for name in extra_names
                 }
             remaining_counts = deck_counts
+        else:
+            task._removal_deck_failed_time = time.time()
     if not isinstance(remaining_counts, dict):
         remaining_counts = getattr(task, "_removal_remaining_counts", None)
     if (
