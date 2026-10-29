@@ -1845,6 +1845,64 @@ def select_card(task: TriggerTask, card_names, count=1, action=""):
     return True
 
 
+def _select_card_in_order(task: TriggerTask, card_names, action, matches):
+    """严格照顺序选 1 张：先往下翻完整个列表记下有哪些卡，再翻回最优先的那张点它。
+    select_card 是每页命中就选，最优先的不在第一页就会先选到后面的
+    （14:00 冥想要闪明灭剑，它不在第一页，结果选了光之剑路）。找不到回传 False。"""
+    page = f"select_card-{action}"
+    max_scrolls = 20
+
+    def visible():
+        task.all_texts = _simplify_texts(task.ocr())
+        return recognize_cards_in_deck(task, page=page)
+
+    def best_of(cards):
+        for rank, target in enumerate(card_names):
+            card = next((c for c in cards if c["name"] and matches(target, c["name"])), None)
+            if card is not None:
+                return rank, card
+        return None, None
+
+    def click(card, target_rank):
+        task.log_info(f"{page}: 照顺序选「{card_names[target_rank]}」，点击「{card['name']}」")
+        _journal(task, f"{action}卡牌", card["name"])
+        _move_and_click(task, card["x"], card["y"])
+        task.sleep(0.3)
+        return True
+
+    rank, card = best_of(visible())
+    if rank == 0:
+        return click(card, rank)
+    best_rank = rank
+    if region_white_ratio(task, (0.976, 0.119, 0.988, 0.858)) < 0.01:  # 只有一页
+        return click(card, rank) if card is not None else False
+
+    scrolls = 0
+    while scrolls < max_scrolls and not _point_is_white(task, 0.982, 0.846, page):
+        _scroll_card_page(task, 0.251, 0.735, -3, page)
+        scrolls += 1
+        rank, card = best_of(visible())
+        if rank == 0:
+            return click(card, rank)
+        if rank is not None and (best_rank is None or rank < best_rank):
+            best_rank = rank
+    if best_rank is None:
+        task.log_info(f"{page}: 整个列表都没有{card_names}")
+        return False
+
+    # 翻到底了：往回翻到看过最优先的那张
+    scrolls = 0
+    while True:
+        rank, card = best_of(visible())
+        if rank is not None and rank <= best_rank:
+            return click(card, rank)
+        if scrolls >= max_scrolls or _point_is_white(task, 0.982, 0.128, page):
+            task.log_info(f"{page}: 往回翻没找到「{card_names[best_rank]}」")
+            return False
+        _scroll_card_page(task, 0.252, 0.179, 3, page)
+        scrolls += 1
+
+
 def calculate_dominant_hue(task: TriggerTask, region):
     """计算区域的主导色相，返回色相值(0-179)，无有效色相返回-1。"""
     box = task.box_of_screen(*region)
@@ -3529,6 +3587,21 @@ def handle_select_card(task: TriggerTask):
     ):
         _scroll_to_target_member_for_card_removal(task)
 
+    preset_names = _preset_select_names(task, action)
+    if preset_names is not None:
+        # 实验模式有预设卡组：要闪、要复制哪张由预设卡组决定（不再看闪光卡牌列表、复制卡牌列表），整个列表照顺序找
+        task.log_info(f"预设卡组: {action}选卡照预设卡组顺序找 {preset_names}")
+        import preset_deck as preset_module
+        if count == 1:
+            result = bool(preset_names) and _select_card_in_order(
+                task, preset_names, action, preset_module._name_matches
+            )
+        else:
+            result = bool(preset_names) and select_card(task, preset_names, count=count, action=action)
+        if result:
+            return True
+        return _click_select_card_skip(task, action, "预设卡组里要的卡都没找到")
+
     card_list = _get_card_list(task, config_key)
     if action in ("闪光", "灵光") and _specific_flash_enabled(task) and task.node_status.get("get_specific_flash"):
         # 已刷到指定闪光：列表第一张（要刷的那张）不再闪，改闪其余的卡；
@@ -3539,21 +3612,40 @@ def handle_select_card(task: TriggerTask):
             card_list = card_list + [keyword]
     result = select_card(task, card_list, count=count, action=action)
     if not result and action in ("闪光", "灵光"):
-        skip_box = next(
-            (
-                b for b in task.all_texts
-                if 0.620 <= (b.x + b.width / 2) / task.width <= 0.990
-                and 0.883 <= (b.y + b.height / 2) / task.height <= 0.983
-                and "跳过" in b.name
-            ),
-            None,
-        )
-        if skip_box:
-            task.log_info(f"卡牌{action}选择无可用卡牌，点击「跳过」")
-            _journal(task, f"{action}卡牌", "跳过（清单里的卡都没认到）")
-            task.click_box(skip_box)
-            return True
+        return _click_select_card_skip(task, action, "清单里的卡都没认到")
     return result
+
+
+def _preset_select_names(task: TriggerTask, action):
+    """实验模式选卡页要找的卡名（已转简体、照优先顺序）；不是预设卡组模式或不是灵光/闪光/复制回传 None。"""
+    if action not in ("闪光", "灵光", "复制") or not getattr(task, "preset_deck_enabled", False):
+        return None
+    try:
+        import preset_deck as preset_module
+        names = preset_module.preset_select_names(task, action)
+    except Exception as e:
+        task.log_info(f"预设卡组: 取选卡顺序失败（{e}），改用旧清单")
+        return None
+    return None if names is None else [_normalize_text(name) for name in names]
+
+
+def _click_select_card_skip(task: TriggerTask, action, reason):
+    """选卡页没有要的卡：按右下的「跳过」；找不到跳过按钮回传 False。"""
+    skip_box = next(
+        (
+            b for b in task.all_texts
+            if 0.620 <= (b.x + b.width / 2) / task.width <= 0.990
+            and 0.883 <= (b.y + b.height / 2) / task.height <= 0.983
+            and "跳过" in b.name
+        ),
+        None,
+    )
+    if skip_box is None:
+        return False
+    task.log_info(f"卡牌{action}选择无可用卡牌，点击「跳过」")
+    _journal(task, f"{action}卡牌", f"跳过（{reason}）")
+    task.click_box(skip_box)
+    return True
 
 
 def handle_copy_card_choice(task: TriggerTask):

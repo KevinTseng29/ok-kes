@@ -43,10 +43,8 @@ REFERENCE_WIDTH = 1762.0
 ASSET_FOLDER = os.path.join(os.path.dirname(__file__), "assets")
 _DECK_PAGE_NAME = "所有牌堆"
 _DECK_CACHE_SECONDS = 15
-_BIG_ICON_THRESHOLD = 0.83
 
 _TEMPLATE_CACHE = {}
-_BIG_TEMPLATE_CACHE = {}
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +103,13 @@ def _text_matches(keyword, text):
     return False
 
 
+def _base_name(text):
+    """去掉卡名后面的变体括号与 +（「明灭剑 (闪击)」→「明灭剑」），比对时只看本名。"""
+    return re.split(r"[（(]", str(text or ""), maxsplit=1)[0].replace("+", "")
+
+
 def _name_matches(first, second):
+    raw_first, raw_second = first, second
     first = _compact(first)
     second = _compact(second)
     if not first or not second:
@@ -114,8 +118,16 @@ def _name_matches(first, second):
         return True
     if is_subsequence(first, second) or is_subsequence(second, first):
         return True
-    if min(len(first), len(second)) >= 3:
-        return _edit_distance(first, second, 1)
+    if min(len(first), len(second)) >= 3 and _edit_distance(first, second, 1):
+        return True
+    # OCR 常漏掉卡名第一个字又多读括号（「灭剑（(闪击)」），括号里的变体名会让上面都比不上：只比本名
+    base_first = _compact(_base_name(raw_first))
+    base_second = _compact(_base_name(raw_second))
+    if min(len(base_first), len(base_second)) >= 2 and (base_first, base_second) != (first, second):
+        if base_first in base_second or base_second in base_first:
+            return True
+        if min(len(base_first), len(base_second)) >= 3:
+            return _edit_distance(base_first, base_second, 1)
     return False
 
 
@@ -327,122 +339,72 @@ def _group_card_hits(group, card):
 
 
 # ---------------------------------------------------------------------------
-# 神闪大图标（卡牌名字下方左侧的小盾牌）
+# 神闪判断：费用数字下方的小图示。普通灵光一闪固定是准星，神闪的图示有很多种（盾牌、漩涡、徽章…），
+# 所以反过来认准星：闪光页上的选项都是闪过的卡，认得到准星就是普通，认不到就是神闪。
 # ---------------------------------------------------------------------------
 
-def _load_big_template(icon_id):
-    if icon_id not in _BIG_TEMPLATE_CACHE:
-        rgb = _imread_unicode(os.path.join(ASSET_FOLDER, "divine_big", f"{icon_id}.png"))
-        mask_data = None
-        try:
-            mask_data = np.fromfile(
-                os.path.join(ASSET_FOLDER, "divine_big", f"{icon_id}_mask.png"),
-                dtype=np.uint8,
-            )
-            mask = cv2.imdecode(mask_data, cv2.IMREAD_GRAYSCALE)
-        except Exception:
-            mask = None
-        _BIG_TEMPLATE_CACHE[icon_id] = (rgb, mask)
-    return _BIG_TEMPLATE_CACHE[icon_id]
+# 图示中心相对类型图标（卡牌识别用的特征）中心的位置，1280×720 实测约 (-0.031, +0.054)，往外留余量
+_FLASH_ICON_OFFSETS = (-0.060, 0.015, -0.003, 0.095)
+_NORMAL_FLASH_TEMPLATE = "normal_flash_icon.png"  # 1280 宽画面上截的准星
+_NORMAL_FLASH_TEMPLATE_WIDTH = 1280.0
+# 灰阶比对：普通 0.91～1.00（闪光动画整张发白时也有 0.75），各种神闪最高 0.36、没闪过的卡 0.32
+_NORMAL_FLASH_THRESHOLD = 0.6
 
 
-def _big_icon_region(task, card):
-    """神闪大图标在卡牌名字下方、类型图标左侧。"""
+def _flash_icon_region(task, card):
     box = card.get("feature_box")
-    if box is None:
-        return None
     width = getattr(task, "width", 0) or 0
     height = getattr(task, "height", 0) or 0
-    if width <= 0 or height <= 0:
+    if box is None or width <= 0 or height <= 0:
         return None
-    fx = box.x / width
-    fy = box.y / height
-    fw = getattr(box, "width", 0) / width
-    fh = getattr(box, "height", 0) / height
-    x1 = max(0.0, fx - 0.006)
-    x2 = min(1.0, fx + fw + 0.006)
-    y1 = max(0.0, fy - 0.006)
-    y2 = min(1.0, fy + fh + 0.018)
-    if x2 - x1 < 0.04 or y2 - y1 < 0.04:
-        return None
-    return (x1, y1, x2, y2)
+    center_x = (box.x + getattr(box, "width", 0) / 2) / width
+    center_y = (box.y + getattr(box, "height", 0) / 2) / height
+    x1, y1, x2, y2 = _FLASH_ICON_OFFSETS
+    return (
+        max(0.0, center_x + x1),
+        max(0.0, center_y + y1),
+        min(1.0, center_x + x2),
+        min(1.0, center_y + y2),
+    )
 
 
-def _big_icon_score(task, card):
-    """返回 (最高分, 最像的标志编号)；分数低于阈值表示没有神闪大图标。"""
+def _normal_flash_score(task, card):
+    """准星图示的灰阶比对分数；算不出来（没有画面、没有特征框）回传 None。"""
     frame = getattr(task, "frame", None)
-    region = _big_icon_region(task, card)
-    if frame is None or region is None:
-        return 0.0, 0
+    region = _flash_icon_region(task, card)
+    template = _load_template(_NORMAL_FLASH_TEMPLATE)
+    if frame is None or region is None or template is None:
+        return None
     height, width = frame.shape[:2]
-    x1 = max(0, min(width, int(round(region[0] * width))))
-    y1 = max(0, min(height, int(round(region[1] * height))))
-    x2 = max(x1 + 1, min(width, int(round(region[2] * width))))
-    y2 = max(y1 + 1, min(height, int(round(region[3] * height))))
-    roi = frame[y1:y2, x1:x2, :3]
-    if roi.size == 0:
-        return 0.0, 0
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
-    edges = cv2.dilate(edges, np.ones((2, 2), np.uint8))
-    if edges.size == 0:
-        return 0.0, 0
-
-    base = (width or REFERENCE_WIDTH) / REFERENCE_WIDTH
-    best_score = 0.0
-    best_icon = 0
-    for icon_id in range(1, 7):
-        template, mask = _load_big_template(icon_id)
-        if template is None or mask is None:
-            continue
-        for factor in (0.30, 0.36, 0.42, 0.48, 0.54, 0.60, 0.66, 0.72, 0.80, 0.90):
-            scale = base * factor
-            if scale <= 0:
-                continue
-            tw = max(1, int(round(template.shape[1] * scale)))
-            th = max(1, int(round(template.shape[0] * scale)))
-            if th > roi.shape[0] or tw > roi.shape[1]:
-                continue
-            scaled = cv2.resize(template, (tw, th), interpolation=cv2.INTER_AREA)
-            scaled_mask = cv2.resize(mask, (tw, th), interpolation=cv2.INTER_NEAREST)
-            template_edges = cv2.Canny(
-                cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY), 50, 150
-            )
-            template_edges = cv2.dilate(
-                template_edges, np.ones((2, 2), np.uint8)
-            )
-            if int(template_edges.sum()) == 0:
-                continue
-            try:
-                result = cv2.matchTemplate(
-                    edges,
-                    template_edges,
-                    cv2.TM_CCORR_NORMED,
-                    mask=(scaled_mask > 0).astype(np.uint8) * 255,
-                )
-            except cv2.error:
-                continue
-            result = np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0)
-            _, max_value, _, _ = cv2.minMaxLoc(result)
-            if max_value > best_score:
-                best_score = float(max_value)
-                best_icon = icon_id
-    return best_score, best_icon
+    roi = frame[int(region[1] * height):int(region[3] * height),
+                int(region[0] * width):int(region[2] * width), :3]
+    scale = width / _NORMAL_FLASH_TEMPLATE_WIDTH
+    if abs(scale - 1) > 0.02:
+        template = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    if roi.shape[0] < template.shape[0] or roi.shape[1] < template.shape[1]:
+        return None
+    result = cv2.matchTemplate(
+        cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY),
+        cv2.cvtColor(template, cv2.COLOR_BGR2GRAY),
+        cv2.TM_CCOEFF_NORMED,
+    )
+    return float(np.nan_to_num(result, nan=-1.0).max())
 
 
 def _card_has_big_divine(task, card):
+    """闪光页上这个选项是不是神闪（认不到普通灵光一闪的准星就是神闪）。"""
     if "_has_big_divine" in card:
         return bool(card["_has_big_divine"])
-    score, icon_id = _big_icon_score(task, card)
-    has_icon = score >= _BIG_ICON_THRESHOLD
-    card["_has_big_divine"] = has_icon
-    card["_big_icon_score"] = score
-    card["_big_icon_type"] = icon_id
+    score = _normal_flash_score(task, card)
+    has_divine = score is not None and score < _NORMAL_FLASH_THRESHOLD
+    card["_has_big_divine"] = has_divine
+    card["_normal_flash_score"] = score
     task.log_info(
-        f"预设卡组: 「{_card_name(card)}」神闪大图标检测="
-        f"{'有' if has_icon else '无'}（最像标志{icon_id}，相似度{score:.3f}）"
+        f"预设卡组: 「{_card_name(card)}」普通灵光图示比对="
+        + (f"{score:.3f}" if score is not None else "无法比对")
+        + f"，判定为{'神闪' if has_divine else '普通'}"
     )
-    return has_icon
+    return has_divine
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +468,55 @@ def _add_meditation_pending(task, name, current_effect, target_effect):
         f"预设卡组: 冥想候选「{name}」当前效果=「{current_effect}」，"
         f"目标效果=「{target_effect}」"
     )
+
+
+def preset_select_names(task, action):
+    """选卡页（请选择…灵光/闪光/复制…卡牌）要找的卡名，照优先顺序；没有预设卡组回传 None（照旧用清单）。
+    - 冥想（再次灵光一闪）：只找待冥想的卡，照待冥想顺序
+    - 其他灵光一闪：先找待冥想的（效果还不对），再照预设卡组顺序
+    - 复制：照预设卡组顺序，同名张数已够的不复制"""
+    records = load_preset_records(task)
+    if not records:
+        return None
+    order, targets, _ = _name_targets(records)
+    pending = [
+        str(item.get("name", ""))
+        for item in getattr(task, "_preset_meditation_pending", None) or []
+        if isinstance(item, dict) and item.get("name")
+    ]
+
+    def unique(names):
+        result = []
+        for name in names:
+            if name and not any(_name_matches(name, kept) for kept in result):
+                result.append(name)
+        return result
+
+    if action == "复制":
+        counts = getattr(task, "_preset_name_counts", None)
+        if isinstance(counts, dict) and counts:
+            def have(name):
+                return next((value for key, value in counts.items() if _name_matches(key, name)), 0)
+            order = [name for name in order if have(name) < targets.get(_compact(name), 1)]
+        return unique(order)
+    if _reflash_active(task):
+        return unique(pending)
+    return unique(pending + order)
+
+
+def _drop_meditation_pending(task, name, target_effect):
+    """灵光一闪选到目标效果后，把这张卡的一条待冥想拿掉；不然下一个篝火又花信用点冥想这张已达标的卡
+    （14:21 光之剑路闪到目标效果，14:22 又被拿去冥想）。"""
+    pending = getattr(task, "_preset_meditation_pending", None)
+    if not isinstance(pending, list):
+        return
+    for item in pending:
+        if _name_matches(item.get("name", ""), name) and _effect_matches(
+            target_effect, item.get("target_effect", "")
+        ):
+            pending.remove(item)
+            task.log_info(f"预设卡组: 「{name}」已闪到目标效果，移出待冥想")
+            return
 
 
 def _rebuild_meditation_pending(task, cards, group_counts=None):
@@ -1259,71 +1270,81 @@ def _read_deck_counts(task, groups):
 # ---------------------------------------------------------------------------
 
 _THREE_CARD_X = (0.23, 0.48, 0.73)
+# 闪光页三张卡名称中心的间距（1280×720 实测 0.269 / 0.523 / 0.776）；_THREE_CARD_X 只用来认第几栏
+_THREE_CARD_SPACING = 0.253
+
+
+def _column_of(card):
+    x = float(card.get("x", 0) or 0)
+    index = min(range(3), key=lambda i: abs(_THREE_CARD_X[i] - x))
+    return index if abs(_THREE_CARD_X[index] - x) <= 0.08 else None
 
 
 def _ensure_three_cards(task, cards):
-    """神闪卡的类型图标会被盾牌替换，特征识别可能只认出 2 张；按三列布局补一张。"""
-    if getattr(task, "_preset_flash_page", "") != "divine":
+    """特征识别有时只认出 1～2 张（神闪卡、闪光动画还没跑完）；按三列布局把缺的补上，
+    补的位置读不到描述（那一栏没有卡）就不补。13:55 光之剑路那页只认到神闪那张，另外两张普通的没得选。"""
+    if not 1 <= len(cards) <= 2:
         return cards
-    if len(cards) != 2:
-        return cards
-    known_x = [float(card.get("x", 0) or 0) for card in cards]
-    missing = [value for value in _THREE_CARD_X if all(abs(value - x) > 0.08 for x in known_x)]
-    if len(missing) != 1:
-        return cards
-    missing_x = missing[0]
     width = getattr(task, "width", 0) or 0
     height = getattr(task, "height", 0) or 0
     if width <= 0 or height <= 0:
         return cards
-    reference = min(cards, key=lambda card: abs(float(card.get("x", 0) or 0) - missing_x))
-    dx = missing_x - float(reference.get("x", 0) or 0)
+    columns = {}
+    for card in cards:
+        column = _column_of(card)
+        if column is None or column in columns:
+            return cards
+        columns[column] = card
+    spacing = _THREE_CARD_SPACING
+    if len(columns) == 2:
+        (first, a), (second, b) = sorted(columns.items())
+        spacing = (float(b.get("x", 0)) - float(a.get("x", 0))) / (second - first)
 
-    def shifted_region(region):
-        if not region:
-            return None
-        return (
-            max(0.0, region[0] + dx),
-            region[1],
-            min(1.0, region[2] + dx),
-            region[3],
+    added = []
+    for missing in (i for i in range(3) if i not in columns):
+        reference_column = min(columns, key=lambda i: abs(i - missing))
+        reference = columns[reference_column]
+        dx = (missing - reference_column) * spacing
+
+        def shifted_region(region):
+            if not region:
+                return None
+            return (max(0.0, region[0] + dx), region[1], min(1.0, region[2] + dx), region[3])
+
+        description_region = shifted_region(reference.get("description_region"))
+        description = _get_region_text(task, description_region) if description_region else ""
+        if len(_compact(description)) < 4:
+            continue
+        name_region = shifted_region(reference.get("name_region"))
+        type_region = shifted_region(reference.get("type_region"))
+        name = (_get_region_text(task, name_region).strip() if name_region else "") or reference.get("name", "")
+        feature_box = reference.get("feature_box")
+        added.append({
+            "name": name,
+            "type": reference.get("type", ""),
+            "description": description,
+            "feature_name": reference.get("feature_name", ""),
+            "feature_type": reference.get("feature_type", ""),
+            "confidence": 0.0,
+            "feature_box": SimpleNamespace(
+                x=(feature_box.x if feature_box else 0) + dx * width,
+                y=(feature_box.y if feature_box else 0),
+                width=(feature_box.width if feature_box else 0),
+                height=(feature_box.height if feature_box else 0),
+            ),
+            "x": (name_region[0] + name_region[2]) / 2 if name_region else float(reference.get("x", 0)) + dx,
+            "y": (name_region[1] + name_region[3]) / 2 if name_region else 0.30,
+            "name_region": name_region,
+            "type_region": type_region,
+            "description_region": description_region,
+            "_synthetic": True,
+        })
+    if added:
+        positions = "、".join(f"{card['x']:.3f}" for card in added)
+        task.log_info(
+            f"预设卡组: 只识别到 {len(cards)} 张卡，按三列布局补出 {len(added)} 张（x={positions}）"
         )
-
-    description_region = shifted_region(reference.get("description_region"))
-    description = (
-        _get_region_text(task, description_region)
-        if description_region
-        else reference.get("description", "")
-    )
-    name_region = shifted_region(reference.get("name_region"))
-    type_region = shifted_region(reference.get("type_region"))
-    feature_box = reference.get("feature_box")
-    synthetic = {
-        "name": reference.get("name", ""),
-        "type": reference.get("type", ""),
-        "description": description,
-        "feature_name": reference.get("feature_name", ""),
-        "feature_type": reference.get("feature_type", ""),
-        "confidence": 0.0,
-        "feature_box": SimpleNamespace(
-            x=(feature_box.x if feature_box else 0) + dx * width,
-            y=(feature_box.y if feature_box else 0),
-            width=(feature_box.width if feature_box else 0),
-            height=(feature_box.height if feature_box else 0),
-        ),
-        "x": (name_region[0] + name_region[2]) / 2 if name_region else missing_x,
-        "y": (name_region[1] + name_region[3]) / 2 if name_region else 0.30,
-        "name_region": name_region,
-        "type_region": type_region,
-        "description_region": description_region,
-        "_synthetic": True,
-    }
-    task.log_info(
-        f"预设卡组: 只识别到 2 张卡，按三列布局补出第 3 张"
-        f"（x={synthetic['x']:.3f}）"
-    )
-    cards.append(synthetic)
-    cards.sort(key=lambda card: float(card.get("x", 0) or 0))
+        cards = sorted(cards + added, key=lambda card: float(card.get("x", 0) or 0))
     return cards
 
 
@@ -1421,6 +1442,7 @@ def _choose_preset_card(task, cards):
                     f"牌组当前{actual}/{group['size']}张"
                 )
                 _bump_name_count(task, _card_name(card))
+                _drop_meditation_pending(task, _card_name(card), (record.get("effects") or [""])[0])
                 return card
 
         # 2) 效果都不符合，再看神闪效果（只对带大图标的神闪卡）。
