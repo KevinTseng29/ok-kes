@@ -37,6 +37,13 @@ class TestStopAfterRound(unittest.TestCase):
         self.assertFalse(utils.stop_if_round_finished(task))
         self.assertFalse(task.disabled)
 
+    def test_no_second_notice_after_empty_deck_success(self):
+        """刷空檔成功那行已經通知過，停下來那行不再通知。"""
+        task = FakeTask(_stop_after_round=True, _stop_notified=True)
+        self.assertTrue(utils.stop_if_round_finished(task))
+        self.assertFalse(task.logs[-1][1])
+        self.assertFalse(task._stop_notified)
+
     def test_not_requested(self):
         task = FakeTask()
         self.assertFalse(utils.stop_if_round_finished(task))

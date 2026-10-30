@@ -111,6 +111,13 @@ class TestOverviewData(unittest.TestCase):
         self.assertTrue(data.is_noisy('   '))
         self.assertFalse(data.is_noisy('检测到赛季卡厄思初始页面'))
 
+    def test_empty_deck_lines_hidden_except_success(self):
+        """刷空檔的過程不寫進主介面的即時日誌，只留成功那行（使用者：很汙染，成功有提示就好）。"""
+        self.assertTrue(data.is_noisy('刷空档：未找到包含“移除2张”的事件任务，点击ESC重新开始'))
+        self.assertTrue(data.is_noisy('select_card-移除: 刷空档优先移除目标主战员同排卡牌，点击「记录者」'))
+        self.assertFalse(data.is_noisy('刷空档成功：刷到一份空档存档，存档完成后停止任务'))
+        self.assertFalse(data.is_noisy('卡厄思模式探险结果: 成功（刷空档达成后逃脱）'))
+
     def test_deck_progress_groups_by_name(self):
         records = [{'name': '明滅劍'}, {'name': '劍之共鳴'}, {'name': '劍之共鳴'}, {'name': ''}]
         same = lambda a, b: a.replace('滅', '灭').replace('劍', '剑').replace('鳴', '鸣') == \

@@ -9,6 +9,9 @@ NOISY = (
     'info_set ', 'hwnd_window', 'update_window_size', 'FeatureSet', 'too many', 'DeviceManager',
     'adb_connect', '卡牌识别调试', '金色边框得分', '神闪大图标检测', '是否选中=', '小地图节点',
 )
+# 刷空档的过程（重抽开局、读牌堆、跳过奖励…）很多又重复，精简模式只留结果
+EMPTY_DECK = '刷空档'
+EMPTY_DECK_KEEP = ('刷到一份空档', '探险结果')
 LEVEL_NAMES = {10: 'DEBUG', 20: 'INFO', 30: 'WARNING', 40: 'ERROR', 50: 'CRITICAL'}
 
 _LINE = re.compile(r'^\S+ (\d{2}:\d{2}:\d{2})[,.]\d+ \w+ \S+ ([^:]+):(.*)$', re.S)
@@ -25,6 +28,8 @@ def parse_log(line):
 
 
 def is_noisy(message):
+    if EMPTY_DECK in message and not any(keep in message for keep in EMPTY_DECK_KEEP):
+        return True
     return not message.strip() or any(noise in message for noise in NOISY)
 
 

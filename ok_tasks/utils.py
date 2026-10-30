@@ -5814,7 +5814,10 @@ def stop_if_round_finished(task: TriggerTask):
     if not getattr(task, "_stop_after_round", False):
         return False
     task._stop_after_round = False
-    task.log_info("这一局已打完，按「打完这局停止」停止任务", notify=True)
+    # 刷空档成功时已经通知过一次，停下来就不再通知
+    notify = not getattr(task, "_stop_notified", False)
+    task._stop_notified = False
+    task.log_info("这一局已打完，按「打完这局停止」停止任务", notify=notify)
     task.disable()
     return True
 
@@ -5875,7 +5878,8 @@ def handle_expedition_result(task: TriggerTask):
             task.log_info("卡厄思模式探险结果: 成功（刷空档达成后逃脱）")
             # 空档一次只要一份：存档做完、到下一局的入口页就停（同「打完这局停止」）
             task._stop_after_round = True
-            task.log_info("刷空档已刷到一份空档存档，存档完成后停止任务")
+            task._stop_notified = True
+            task.log_info("刷空档成功：刷到一份空档存档，存档完成后停止任务", notify=True)
         elif not _get_config_value(task, '只打第一层', False) and not task.node_status.get('is_escaped', 0): # 完成了任务且没有逃脱
             succeeded = True
             task.node_status['success_rounds'] += 1
