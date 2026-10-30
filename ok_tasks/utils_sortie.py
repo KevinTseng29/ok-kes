@@ -1026,6 +1026,15 @@ def _should_claim_reward(task: TriggerTask):
             and not task.node_status.get("rational_exhausted", False))
 
 
+def _stop_when_rational_exhausted():
+    """运行总览的「理性用完就停（出击）」开关（存在本机，默认打开）；读不到就照默认。"""
+    try:
+        from src import run_switches
+        return run_switches.get(run_switches.STOP_WHEN_RATIONAL_EXHAUSTED)
+    except Exception:
+        return True
+
+
 def handle_rational_supply(task: TriggerTask):
     """补充理性页面（理性不够领额外战利品时跳出）：一律放弃补充，绝不花钻石买理性。
     这一局之后不再按「获得」（node_status 在下一局入场时重置，理性会自然恢复，下一局再试）。
@@ -1041,8 +1050,16 @@ def handle_rational_supply(task: TriggerTask):
         return False
     first_time = not task.node_status.get("rational_exhausted", False)
     task.node_status["rational_exhausted"] = True
-    task.log_info("检测到补充理性页面：理性不足，点击放弃补充（不花钻石），这一局不再领额外战利品",
-                  notify=first_time)
+    if _stop_when_rational_exhausted():
+        # 理性用完之后的战利品都领不了，再打意义不大：打完这局（探险结果记好）就停，只通知这一次
+        if first_time:
+            task._stop_after_round = True
+            task._stop_notified = True
+        task.log_info("检测到补充理性页面：理性用完，放弃补充（不花钻石），这局打完就停止出击",
+                      notify=first_time)
+    else:
+        task.log_info("检测到补充理性页面：理性不足，点击放弃补充（不花钻石），这一局不再领额外战利品",
+                      notify=first_time)
     _move_and_click(task, 0.352, 0.774)
     task.sleep(1)
     return True

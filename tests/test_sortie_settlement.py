@@ -81,6 +81,24 @@ class TestRationalSupply(unittest.TestCase):
         self.assertTrue(t.node_status["rational_exhausted"])
         self.assertTrue(t.config["领取奖励"])  # 不再把設定永久關掉
 
+    def test_stop_after_round_when_switch_on(self):
+        """運行總覽「理性用完就停（出擊）」打開：理性用完就打完這局停，只通知一次（停下來那行不再通知）。"""
+        t = self.page(box("补充理性", 0.5, 0.17))
+        notices = []
+        t.log_info = lambda message, notify=False: notices.append(notify)
+        with patch.object(utils_sortie, "_stop_when_rational_exhausted", return_value=True):
+            utils_sortie.handle_rational_supply(t)
+            utils_sortie.handle_rational_supply(t)
+        self.assertTrue(t._stop_after_round)
+        self.assertTrue(t._stop_notified)
+        self.assertEqual(notices, [True, False])
+
+    def test_keep_going_when_switch_off(self):
+        t = self.page(box("补充理性", 0.5, 0.17))
+        with patch.object(utils_sortie, "_stop_when_rational_exhausted", return_value=False):
+            utils_sortie.handle_rational_supply(t)
+        self.assertFalse(getattr(t, "_stop_after_round", False))
+
     def test_no_more_claims_this_run(self):
         t = self.page(box("结算", 0.550, 0.068), box("获得", 0.848, 0.389))
         self.assertTrue(utils_sortie.handle_sortie_reward_settlement(t))

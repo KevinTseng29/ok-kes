@@ -22,6 +22,7 @@ from ok.gui.widget.Card import Card
 from ok.gui.widget.CustomTab import CustomTab
 from src import run_overview_data as data
 from src import run_stats
+from src import run_switches
 
 MODES = ('ChaosModeExperimental', 'ChaosMode', 'SortieModeExperimental', 'SortieMode', 'StoryMode')
 # 戰績分組：卡厄思（含實驗版）與出擊分開算
@@ -151,6 +152,12 @@ class RunOverviewTab(CustomTab):
         self.stop_button = TogglePushButton(_tr('打完这局停止'))
         self.stop_button.toggled.connect(self._toggle_stop_after_round)
         layout.addWidget(self.stop_button)
+        # 出擊理性用完（領不了戰利品）就打完這局停止；存在本機，不進任務設定
+        self.rational_stop_box = CheckBox(_tr('理性用完就停（出击）'))
+        self.rational_stop_box.setChecked(run_switches.get(run_switches.STOP_WHEN_RATIONAL_EXHAUSTED))
+        self.rational_stop_box.toggled.connect(
+            lambda checked: run_switches.set_switch(run_switches.STOP_WHEN_RATIONAL_EXHAUSTED, checked))
+        layout.addWidget(self.rational_stop_box)
         layout.addWidget(_section(_tr('主练')))
         self.member_label = _value_label()
         layout.addWidget(self.member_label)
