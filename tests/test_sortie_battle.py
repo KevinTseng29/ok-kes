@@ -215,3 +215,24 @@ class TestEndTurnWhenNothingPlayable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHandKeysFromLayout(unittest.TestCase):
+    """手牌按鍵照排法推：最左邊那張打不起、沉下去認不到卡名時，認得到的第一張不能當成 1。
+    座標取自 2026-10-30 09:17、09:23 的 OCR（09:23 一直按 1＝打不起的暗黑凝聚，卡了一分鐘）。"""
+
+    def hand(self, texts, count):
+        t = battle_task()
+        t.all_texts = [SimpleNamespace(name=name, x=left * 1280, y=cy * 720 - 10,
+                                       width=(cx - left) * 2 * 1280, height=20) for name, left, cx, cy in texts]
+        with patch.object(utils_sortie, "_read_hand_count", return_value=count):
+            return [(c["name"], c["key"]) for c in utils_sortie._hand_cards(t)]
+
+    def test_dim_leftmost_card_unreadable(self):
+        texts = [("节奏：琶音(0)", 0.3969, 0.4352, 0.7486), ("节奏", 0.5383, 0.5539, 0.7479),
+                 ("琶音（2）", 0.5758, 0.5930, 0.7507), ("基本攻击", 0.4100, 0.4324, 0.7701)]
+        self.assertEqual(self.hand(texts, 4), [("节奏：琶音(0)", "2"), ("节奏琶音（2）", "3")])
+
+    def test_two_cards(self):
+        texts = [("物质再生", 0.3992, 0.4215, 0.8458), ("暗黑凝聚", 0.5430, 0.5652, 0.8451)]
+        self.assertEqual(self.hand(texts, 2), [("物质再生", "1"), ("暗黑凝聚", "2")])

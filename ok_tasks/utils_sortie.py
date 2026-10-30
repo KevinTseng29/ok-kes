@@ -34,6 +34,7 @@ from dialogue import mark_battle
 import re
 import time
 import random
+from types import SimpleNamespace
 import cv2
 import numpy as np
 
@@ -199,6 +200,36 @@ def _affordable(card, ap):
     return ap is None or card.get("cost") is None or card["cost"] <= ap
 
 
+_HAND_SPACING = 0.141  # 手牌 4 张以内间距固定、整排以画面中线置中（2026-10-30 实测 2 张 0.144、4 张 0.141）
+_HAND_LAYOUT_MAX = 4  # 更多张会挤，间距没量过，交给原本的间距推算
+_NAME_TO_CENTER = 0.0375  # 卡名左缘到这张牌中线的距离
+
+
+def _layout_key(left_x, hand_count):
+    """照手牌排法从卡名位置推按键：最左边那张变暗沉下去、卡名认不到时，不能把认得到的第一张当成 1。"""
+    key = round((left_x + _NAME_TO_CENTER - 0.5) / _HAND_SPACING + (hand_count + 1) / 2)
+    return str(key) if 1 <= key <= hand_count else None
+
+
+def _merge_split_names(task: TriggerTask, boxes):
+    """同一张牌的卡名被 OCR 拆成两段（「节奏」「琶音（2）」）：同一排、几乎相连就接回一张，
+    不然会多算一张牌、把间距算小，按键整个推歪（09:23 琶音(2) 被推成 4、5）。boxes 已按 x 排序。"""
+    merged = []
+    for box in boxes:
+        prev = merged[-1] if merged else None
+        if prev is not None:
+            gap = (box.x - (prev.x + prev.width)) / task.width
+            row_gap = abs((box.y + box.height / 2) - (prev.y + prev.height / 2)) / task.height
+            if gap <= 0.012 and row_gap <= 0.015:
+                top = min(prev.y, box.y)
+                merged[-1] = SimpleNamespace(name=prev.name + box.name, x=prev.x, y=top,
+                                             width=box.x + box.width - prev.x,
+                                             height=max(prev.y + prev.height, box.y + box.height) - top)
+                continue
+        merged.append(box)
+    return merged
+
+
 def _hand_cards(task: TriggerTask):
     """识别手牌，返回按位置排序的卡牌名与按键列表，按键缺失时根据手牌数和间距推断。"""
     # 按键：包含数字的
@@ -208,6 +239,7 @@ def _hand_cards(task: TriggerTask):
     # 卡牌名
     card_names = _hand_card_names(task)
     card_names.sort(key=lambda b: b.x)
+    card_names = _merge_split_names(task, card_names)
 
     # 读取手牌数
     hand_count = _read_hand_count(task)
@@ -240,6 +272,13 @@ def _hand_cards(task: TriggerTask):
         else:
             cards.append({"name": name_box.name, "key": None, "x": cx, "left_x": left_x,
                           "cost": _card_cost(task, name_box), "dim": _is_dim_card(task, name_box)})
+
+    # 手牌不多时照排法直接推：变暗沉下去的牌卡名常认不到，认得到的第一张不一定是 1
+    if hand_count and hand_count <= _HAND_LAYOUT_MAX:
+        for c in cards:
+            if c["key"] is None:
+                c["key"] = _layout_key(c["left_x"], hand_count)
+                task.log_info(f"_hand_cards: 卡牌「{c['name']}」 left_x={c['left_x']:.4f} 照{hand_count}张的排法 → {c['key']}")
 
     # 推断缺失的按键：用最小相邻间距作为 expected_spacing 进行插值
     # 以最近的前一张已有按键的卡牌为基准推算，避免累积误差
